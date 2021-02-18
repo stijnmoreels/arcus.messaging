@@ -1,6 +1,4 @@
-﻿using Arcus.Messaging.Pumps.Abstractions.MessageHandling;
-
-namespace Arcus.Messaging.Tests.Unit.Fixture
+﻿namespace Arcus.Messaging.Tests.Unit.Fixture
 {
     /// <summary>
     /// Test message model implementation as indication to handle a specific messages in the <see cref="IMessageHandler{TMessage, TMessageContext}"/>.

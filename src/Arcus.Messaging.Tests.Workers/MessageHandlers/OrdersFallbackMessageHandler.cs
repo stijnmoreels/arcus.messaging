@@ -1,19 +1,16 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net.Mime;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Arcus.EventGrid.Publishing.Interfaces;
 using Arcus.Messaging.Abstractions;
-using Arcus.Messaging.Pumps.Abstractions.MessageHandling;
+using Arcus.Messaging.Abstractions.MessageHandling;
 using Arcus.Messaging.Tests.Core.Events.v1;
 using Arcus.Messaging.Tests.Core.Messages.v1;
 using CloudNative.CloudEvents;
 using GuardNet;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Arcus.Messaging.Tests.Workers.MessageHandlers
 {

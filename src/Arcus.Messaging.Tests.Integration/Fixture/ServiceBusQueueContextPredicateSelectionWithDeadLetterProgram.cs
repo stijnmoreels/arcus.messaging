@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Arcus.EventGrid.Publishing;
 using Arcus.Messaging.Pumps.ServiceBus;
+using Arcus.Messaging.ServiceBus.Abstractions;
 using Arcus.Messaging.Tests.Core.Messages.v1;
 using Arcus.Messaging.Tests.Workers.MessageHandlers;
 using Microsoft.Extensions.Configuration;

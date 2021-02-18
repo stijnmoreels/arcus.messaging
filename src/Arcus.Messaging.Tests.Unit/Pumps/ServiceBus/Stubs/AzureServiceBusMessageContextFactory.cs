@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using Arcus.Messaging.Pumps.ServiceBus;
+using Arcus.Messaging.ServiceBus.Abstractions;
 using Microsoft.Azure.ServiceBus;
 
 namespace Arcus.Messaging.Tests.Unit.Pumps.ServiceBus.Stubs

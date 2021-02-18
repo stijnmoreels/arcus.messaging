@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Arcus.Messaging.Abstractions;
 using Arcus.Messaging.Pumps.Abstractions;
-using Arcus.Messaging.Pumps.Abstractions.MessageHandling;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
