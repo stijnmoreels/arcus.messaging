@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,9 +12,7 @@ using Arcus.Messaging.Pumps.Abstractions;
 using Arcus.Messaging.Pumps.ServiceBus.Configuration;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
-using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Arcus.Messaging.Pumps.ServiceBus
@@ -451,10 +450,10 @@ namespace Arcus.Messaging.Pumps.ServiceBus
                 Logger.LogTrace("No operation ID was found on the message '{MessageId}' during processing in the Azure Service Bus {EntityType} message pump '{JobId}'", message.MessageId, Settings.ServiceBusEntity, JobId);
             }
 
-            using MessageCorrelationResult correlationResult = DetermineMessageCorrelation(message);
+            MessageCorrelationInfo correlationInfo = DetermineMessageCorrelation(message);
             AzureServiceBusMessageContext messageContext = message.GetMessageContext(JobId, Settings.ServiceBusEntity);
 
-            MessageProcessingResult routingResult = await _messageRouter.RouteMessageAsync(_messageReceiver, message, messageContext, correlationResult.CorrelationInfo, cancellationToken);
+            MessageProcessingResult routingResult = await _messageRouter.RouteMessageAsync(_messageReceiver, message, messageContext, correlationInfo, cancellationToken);
 
             if (routingResult.IsSuccessful && Settings.Options.AutoComplete)
             {
@@ -476,13 +475,14 @@ namespace Arcus.Messaging.Pumps.ServiceBus
             return routingResult;
         }
 
-        private MessageCorrelationResult DetermineMessageCorrelation(ServiceBusReceivedMessage message)
+        private MessageCorrelationInfo DetermineMessageCorrelation(ServiceBusReceivedMessage message)
         {
             if (Settings.Options.Routing.Correlation.Format is MessageCorrelationFormat.W3C)
             {
+                string operationId = ActivitySpanId.CreateRandom().ToHexString();
                 (string transactionId, string operationParentId) = message.ApplicationProperties.GetTraceParent();
-                var client = ServiceProvider.GetRequiredService<TelemetryClient>();
-                return MessageCorrelationResult.Create(client, transactionId, operationParentId);
+
+                return new MessageCorrelationInfo(operationId, transactionId, operationParentId);
             }
 
             MessageCorrelationInfo correlationInfo =
@@ -490,7 +490,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
                     Settings.Options.Routing.Correlation?.TransactionIdPropertyName ?? PropertyNames.TransactionId,
                     Settings.Options.Routing.Correlation?.OperationParentIdPropertyName ?? PropertyNames.OperationParentId);
 
-            return MessageCorrelationResult.Create(correlationInfo);
+            return correlationInfo;
         }
 
         private static async Task UntilCancelledAsync(CancellationToken cancellationToken)

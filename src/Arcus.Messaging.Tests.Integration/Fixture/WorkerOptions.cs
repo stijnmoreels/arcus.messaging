@@ -6,6 +6,7 @@ using GuardNet;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Configuration;
 using Xunit.Abstractions;
@@ -80,23 +81,6 @@ namespace Arcus.Messaging.Tests.Integration.Fixture
         {
             Guard.NotNull(hostBuilder, nameof(hostBuilder), "Requires a host builder instance to apply the worker options to");
 
-            LoggerConfiguration config =
-                new LoggerConfiguration()
-                    .MinimumLevel.Verbose()
-                    .Enrich.FromLogContext();
-
-            if (_outputWriter != null)
-            {
-                config.WriteTo.XunitTestLogging(_outputWriter);
-            }
-
-            foreach (Action<LoggerConfiguration> configure in _additionalSerilogConfigOptions)
-            {
-                configure(config);
-            }
-
-            Log.Logger = config.CreateLogger();
-
             hostBuilder.ConfigureAppConfiguration(builder => builder.AddInMemoryCollection(Configuration))
                        .ConfigureServices(services =>
                        {
@@ -104,8 +88,33 @@ namespace Arcus.Messaging.Tests.Integration.Fixture
                            {
                                services.Add(service);
                            }
-                       })
-                       .UseSerilog(Log.Logger);
+                       });
+
+            if (_additionalSerilogConfigOptions.Count > 0)
+            {
+                LoggerConfiguration config =
+                    new LoggerConfiguration()
+                        .MinimumLevel.Verbose()
+                        .Enrich.FromLogContext();
+
+                if (_outputWriter != null)
+                {
+                    config.WriteTo.XunitTestLogging(_outputWriter);
+                }
+
+                foreach (Action<LoggerConfiguration> configure in _additionalSerilogConfigOptions)
+                {
+                    configure(config);
+                }
+
+                Log.Logger = config.CreateLogger();
+
+                hostBuilder.UseSerilog(Log.Logger);
+            }
+            else if (_outputWriter != null)
+            {
+                hostBuilder.ConfigureLogging(logging => logging.AddXunitTestLogging(_outputWriter));
+            }
 
             foreach (Action<IHostBuilder> additionalHostOption in _additionalHostOptions)
             {

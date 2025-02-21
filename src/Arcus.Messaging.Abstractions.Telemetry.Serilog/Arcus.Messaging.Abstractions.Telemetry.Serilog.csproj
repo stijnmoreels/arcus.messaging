@@ -6,7 +6,7 @@
     <Authors>Arcus</Authors>
     <Company>Arcus</Company>
     <Product>Arcus.Messaging</Product>
-    <Description>Provides capability to run an Azure Service Bus message pump</Description>
+    <Description>Provides abstractions for providing telemetry to message pumps</Description>
     <Copyright>Copyright (c) Arcus</Copyright>
     <PackageProjectUrl>https://messaging.arcus-azure.net/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/arcus-azure/arcus.messaging</RepositoryUrl>
@@ -14,7 +14,7 @@
     <PackageIcon>icon.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryType>Git</RepositoryType>
-    <PackageTags>Azure;Messaging;ServiceBus</PackageTags>
+    <PackageTags>Azure;Messaging</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -27,16 +27,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Arcus.Security.Providers.AzureKeyVault" Version="[2.0.0,3.0.0)" />
-    <PackageReference Include="Azure.Identity" Version="1.12.0" />
-    <PackageReference Include="Microsoft.Azure.Management.ServiceBus" Version="2.1.0" />
-    <PackageReference Include="Microsoft.IdentityModel.Clients.ActiveDirectory" Version="5.2.0" />
+    <PackageReference Include="Arcus.Observability.Telemetry.Serilog.Enrichers" Version="[3.0.0,4.0.0)" />
+    <PackageReference Include="Microsoft.ApplicationInsights" Version="2.21.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Arcus.Messaging.Pumps.Abstractions\Arcus.Messaging.Pumps.Abstractions.csproj" />
     <ProjectReference Include="..\Arcus.Messaging.Abstractions.ServiceBus\Arcus.Messaging.Abstractions.ServiceBus.csproj" />
-    <ProjectReference Include="..\Arcus.Messaging.ServiceBus.Core\Arcus.Messaging.ServiceBus.Core.csproj" />
+    <ProjectReference Include="..\Arcus.Messaging.Abstractions\Arcus.Messaging.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using Arcus.Messaging.Abstractions;
 using Arcus.Messaging.Abstractions.MessageHandling;
-using Microsoft.ApplicationInsights;
-using Microsoft.Extensions.DependencyInjection;
 
 // ReSharper disable once CheckNamespace
 namespace Microsoft.Azure.Functions.Worker
@@ -55,9 +53,8 @@ namespace Microsoft.Azure.Functions.Worker
         private static MessageCorrelationResult GetCorrelationInfoViaW3C(FunctionContext context, IDictionary<string, object> userPropertiesJson)
         {
             (string transactionIdW3C, string operationParentIdW3C) = userPropertiesJson.GetTraceParent();
-            var clientForExistingParent = context.InstanceServices.GetRequiredService<TelemetryClient>();
 
-            return MessageCorrelationResult.Create(clientForExistingParent, transactionIdW3C, operationParentIdW3C);
+            return null;
         }
 
 
@@ -104,7 +101,7 @@ namespace Microsoft.Azure.Functions.Worker
             var transactionId = transactionIdHierarchicalValue?.ToString() ?? Guid.NewGuid().ToString();
 
             var correlationInfo = new MessageCorrelationInfo(operationId, transactionId, operationParentIdHierarchical?.ToString());
-            return MessageCorrelationResult.Create(correlationInfo);
+            return null;
         }
 
         private static IDictionary<string, object> GetUserPropertiesJson(FunctionContext context)

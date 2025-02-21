@@ -2,14 +2,10 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Arcus.Messaging.Abstractions.MessageHandling;
-using Arcus.Messaging.Abstractions.Telemetry;
-using Arcus.Observability.Telemetry.Core;
 using Azure.Messaging.EventHubs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Serilog.Context;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Arcus.Messaging.Abstractions.EventHubs.MessageHandling
 {
@@ -131,40 +127,12 @@ namespace Arcus.Messaging.Abstractions.EventHubs.MessageHandling
             MessageCorrelationInfo correlationInfo,
             CancellationToken cancellationToken)
         {
-            var isSuccessful = false;
-            using (DurationMeasurement measurement = DurationMeasurement.Start())
             using (IServiceScope serviceScope = ServiceProvider.CreateScope())
-            using (LogContext.Push(new MessageCorrelationInfoEnricher(correlationInfo, Options.CorrelationEnricher)))
             {
-                try
-                {
-                    var accessor = serviceScope.ServiceProvider.GetService<IMessageCorrelationInfoAccessor>();
-                    accessor?.SetCorrelationInfo(correlationInfo);
+                var accessor = serviceScope.ServiceProvider.GetService<IMessageCorrelationInfoAccessor>();
+                accessor?.SetCorrelationInfo(correlationInfo);
 
-                    await RouteMessageAsync(serviceScope.ServiceProvider, message, messageContext, correlationInfo, cancellationToken);
-                    isSuccessful = true;
-                }
-                finally
-                {
-                    string eventHubsNamespace = "<not-available>";
-                    string consumerGroup = "<not-available>";
-                    string eventHubsName = "<not-available>";
-
-                    if (messageContext is AzureEventHubsMessageContext context)
-                    {
-                        eventHubsNamespace = context.EventHubsNamespace;
-                        consumerGroup = context.ConsumerGroup;
-                        eventHubsName = context.EventHubsName;
-                    }
-
-                    Logger.LogEventHubsRequest(
-                        eventHubsNamespace,
-                        consumerGroup,
-                        eventHubsName,
-                        Options.Telemetry.OperationName,
-                        isSuccessful,
-                        measurement);
-                }
+                await RouteMessageAsync(serviceScope.ServiceProvider, message, messageContext, correlationInfo, cancellationToken);
             }
         }
     }

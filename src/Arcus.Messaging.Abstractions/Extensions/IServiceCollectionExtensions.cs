@@ -66,8 +66,6 @@ namespace Microsoft.Extensions.DependencyInjection
                 throw new ArgumentNullException(nameof(implementationFactory));
             }
 
-            services.AddApplicationInsightsTelemetryWorkerService();
-
             services.AddCorrelation<MessageCorrelationInfo>()
                     .AddScoped<IMessageCorrelationInfoAccessor>(serviceProvider =>
                     {

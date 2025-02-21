@@ -4,13 +4,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Arcus.Messaging.Abstractions.MessageHandling;
-using Arcus.Messaging.Abstractions.Telemetry;
-using Arcus.Observability.Telemetry.Core;
+using Arcus.Messaging.Abstractions.ServiceBus.Telemetry;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Serilog.Context;
 using static Arcus.Messaging.Abstractions.MessageHandling.MessageProcessingError;
 using ServiceBusFallbackMessageHandler = Arcus.Messaging.Abstractions.MessageHandling.FallbackMessageHandler<Azure.Messaging.ServiceBus.ServiceBusReceivedMessage, Arcus.Messaging.Abstractions.ServiceBus.AzureServiceBusMessageContext>;
 
@@ -112,23 +110,20 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
             MessageCorrelationInfo correlationInfo,
             CancellationToken cancellationToken)
         {
+            var tracker = ServiceProvider.GetService<IAzureServiceBusTelemetryClient>();
+            using MessageCorrelationResult request = tracker?.StartServiceBusRequest(receiver: null, messageContext as AzureServiceBusMessageContext, correlationInfo, ServiceBusOptions.Telemetry);
+
             var isSuccessful = false;
-            using (DurationMeasurement measurement = DurationMeasurement.Start())
+            try
             {
-                try
+                await base.RouteMessageAsync(message, messageContext, correlationInfo, cancellationToken);
+                isSuccessful = true;
+            }
+            finally
+            {
+                if (request != null)
                 {
-                    await base.RouteMessageAsync(message, messageContext, correlationInfo, cancellationToken);
-                    isSuccessful = true;
-                }
-                finally
-                {
-                    Logger.LogServiceBusRequest(
-                        serviceBusNamespace: "<not-available>",
-                        entityName: "<not-available>",
-                        Options.Telemetry.OperationName,
-                        isSuccessful,
-                        measurement,
-                        ServiceBusEntityType.Unknown);
+                    request.IsSuccessful = isSuccessful;
                 }
             }
         }
@@ -231,27 +226,29 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
                 throw new ArgumentNullException(nameof(correlationInfo));
             }
 
-            string entityName = messageReceiver?.EntityPath ?? "<not-available>";
-            string serviceBusNamespace = messageReceiver?.FullyQualifiedNamespace ?? "<not-available>";
-
-            using DurationMeasurement measurement = DurationMeasurement.Start();
             using IServiceScope serviceScope = ServiceProvider.CreateScope();
-            using IDisposable _ = LogContext.Push(new MessageCorrelationInfoEnricher(correlationInfo, Options.CorrelationEnricher));
 
+            var telemetryClient = serviceScope.ServiceProvider.GetService<IAzureServiceBusTelemetryClient>();
+            using MessageCorrelationResult request = telemetryClient?.StartServiceBusRequest(messageReceiver, messageContext, correlationInfo, ServiceBusOptions.Telemetry);
+
+            var isSuccessful = false;
             try
             {
                 var accessor = serviceScope.ServiceProvider.GetService<IMessageCorrelationInfoAccessor>();
-                accessor?.SetCorrelationInfo(correlationInfo);
+                MessageCorrelationInfo newCorrelationInfo = request?.CorrelationInfo ?? correlationInfo;
+                accessor?.SetCorrelationInfo(newCorrelationInfo);
 
-                MessageProcessingResult routingResult = await TryRouteMessageWithPotentialFallbackAsync(serviceScope.ServiceProvider, messageReceiver, message, messageContext, correlationInfo, cancellationToken);
+                MessageProcessingResult routingResult = await TryRouteMessageWithPotentialFallbackAsync(serviceScope.ServiceProvider, messageReceiver, message, messageContext, newCorrelationInfo, cancellationToken);
 
-                Logger.LogServiceBusRequest(serviceBusNamespace, entityName, Options.Telemetry.OperationName, routingResult.IsSuccessful, measurement, messageContext.EntityType);
+                isSuccessful = true;
                 return routingResult;
             }
-            catch
+            finally
             {
-                Logger.LogServiceBusRequest(serviceBusNamespace, entityName, Options.Telemetry.OperationName, false, measurement, messageContext.EntityType);
-                throw;
+                if (request != null)
+                {
+                    request.IsSuccessful = isSuccessful;
+                }
             }
         }
 

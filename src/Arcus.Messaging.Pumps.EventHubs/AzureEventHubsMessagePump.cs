@@ -9,9 +9,7 @@ using Arcus.Messaging.Pumps.Abstractions;
 using Arcus.Messaging.Pumps.EventHubs.Configuration;
 using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Processor;
-using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Arcus.Messaging.Pumps.EventHubs
@@ -151,15 +149,13 @@ namespace Arcus.Messaging.Pumps.EventHubs
             if (_eventHubsConfig.Options.Routing.Correlation.Format is MessageCorrelationFormat.W3C)
             {
                 (string transactionId, string operationParentId) = message.Properties.GetTraceParent();
-                var client = ServiceProvider.GetRequiredService<TelemetryClient>();
-                return MessageCorrelationResult.Create(client, transactionId, operationParentId);
             }
 
             MessageCorrelationInfo correlation = message.GetCorrelationInfo(
                 transactionIdPropertyName: _eventHubsConfig.Options.Routing.Correlation.TransactionIdPropertyName,
                 operationParentIdPropertyName: _eventHubsConfig.Options.Routing.Correlation.OperationParentIdPropertyName);
 
-            return MessageCorrelationResult.Create(correlation);
+            return null;
         }
 
         private Task ProcessErrorAsync(ProcessErrorEventArgs args)

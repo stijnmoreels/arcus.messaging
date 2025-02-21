@@ -4,8 +4,6 @@ using System.Linq;
 using System.Text.Json;
 using Arcus.Messaging.Abstractions;
 using Arcus.Messaging.Abstractions.MessageHandling;
-using Microsoft.ApplicationInsights;
-using Microsoft.Extensions.DependencyInjection;
 
 // ReSharper disable once CheckNamespace
 namespace Microsoft.Azure.Functions.Worker
@@ -23,7 +21,6 @@ namespace Microsoft.Azure.Functions.Worker
         /// <returns>An disposable message correlation that acts as a request scope for the remaining execution of the function.</returns>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="context"/> or the <paramref name="applicationProperties"/> is <c>null</c>.</exception>
         /// <exception cref="InvalidOperationException">
-        ///     Thrown when no <see cref="TelemetryClient"/> could be found in the registered services or when no message correlation format could be determined.
         /// </exception>
         public static MessageCorrelationResult GetCorrelationInfo(
             this FunctionContext context,
@@ -41,7 +38,6 @@ namespace Microsoft.Azure.Functions.Worker
         /// <returns>An disposable message correlation that acts as a request scope for the remaining execution of the function.</returns>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="context"/> or the <paramref name="applicationProperties"/> is <c>null</c>.</exception>
         /// <exception cref="InvalidOperationException">
-        ///     Thrown when no <see cref="TelemetryClient"/> could be found in the registered services or when no message correlation format could be determined.
         /// </exception>
         public static MessageCorrelationResult GetCorrelationInfo(
             this FunctionContext context,
@@ -60,16 +56,7 @@ namespace Microsoft.Azure.Functions.Worker
 
             if (correlationFormat is MessageCorrelationFormat.W3C)
             {
-                var telemetryClient = context.InstanceServices.GetService<TelemetryClient>();
-                if (telemetryClient is null)
-                {
-                    throw new InvalidOperationException(
-                        "Cannot retrieve the Microsoft telemetry client form the Azure Functions registered services, this can happen when the Application Insights packages are in conflict with each other,"
-                        + "please correct this conflict so the W3C message correlation can be determined for received events from Azure EventHubs");
-                }
-
-                (string transactionId, string operationParentId) = DetermineTraceParent(applicationProperties);
-                return MessageCorrelationResult.Create(telemetryClient, transactionId, operationParentId);
+                DetermineTraceParent(applicationProperties);
             }
 
             if (correlationFormat is MessageCorrelationFormat.Hierarchical)
@@ -78,8 +65,6 @@ namespace Microsoft.Azure.Functions.Worker
                 string operationId = DetermineOperationId(applicationProperties);
                 string operationParentId = GetOptionalUserProperty(applicationProperties, PropertyNames.OperationParentId);
 
-                var correlationInfo = new MessageCorrelationInfo(operationId, transactionId, operationParentId);
-                return MessageCorrelationResult.Create(correlationInfo);
             }
 
             throw new InvalidOperationException(

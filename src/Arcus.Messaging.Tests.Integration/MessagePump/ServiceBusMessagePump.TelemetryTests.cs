@@ -1,5 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Arcus.Messaging.Abstractions.MessageHandling;
 using Arcus.Messaging.Pumps.ServiceBus;
@@ -9,7 +14,6 @@ using Arcus.Messaging.Tests.Core.Messages.v1;
 using Arcus.Messaging.Tests.Integration.Fixture;
 using Arcus.Messaging.Tests.Integration.Fixture.Logging;
 using Arcus.Messaging.Tests.Integration.MessagePump.Fixture;
-using Arcus.Messaging.Tests.Integration.MessagePump.ServiceBus;
 using Arcus.Messaging.Tests.Workers.MessageHandlers;
 using Arcus.Messaging.Tests.Workers.ServiceBus.MessageHandlers;
 using Arcus.Testing;
@@ -17,12 +21,16 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Events;
 using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
 using Xunit;
+using Xunit.Sdk;
 using static Arcus.Messaging.Tests.Integration.MessagePump.ServiceBus.DiskMessageEventConsumer;
 using static Arcus.Observability.Telemetry.Core.ContextProperties.Correlation;
 using static Arcus.Observability.Telemetry.Core.ContextProperties.RequestTracking.ServiceBus;
@@ -33,19 +41,122 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
     public partial class ServiceBusMessagePumpTests
     {
         [Fact]
-        public async Task ServiceBusMessagePump_WithW3CCorrelationFormat_AutomaticallyTracksMicrosoftDependencies()
+        public async Task ServiceBusMessagePump_WithW3CCorrelationFormatForNewParentViaOpenTelemetry_AutomaticallyTracksMicrosoftDependencies()
         {
             // Arrange
             var options = new WorkerOptions();
 
             string operationName = Guid.NewGuid().ToString();
-            options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt => 
+            options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt =>
+            {
+                opt.Routing.Telemetry.OperationName = operationName;
+                opt.AutoComplete = true;
+
+            }).WithServiceBusMessageHandler<OrderWithAutoTrackingAzureServiceBusMessageHandler, Order>();
+
+            var activities = new Collection<Activity>();
+            options.AddOpenTelemetry()
+                   .WithTracing(traces =>
+                   {
+                       traces.AddSource(operationName);
+                       traces.AddInMemoryExporter(activities);
+                       traces.AddSqlClientInstrumentation();
+                       traces.AddServiceBusInstrumentation();
+                       traces.SetSampler(new AlwaysOnSampler());
+                   });
+
+            var message = new ServiceBusMessage(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(OrderGenerator.Generate())));
+
+            // Act
+            await TestServiceBusMessageHandlingAsync(options, Queue, message, async () =>
+            {
+                Activity serviceBusRequest = await GetRequestActivityAsync(activities, a => a.OperationName == operationName);
+                Activity sqlDependency = await GetDependencyActivityAsync(activities, a => a.OperationName == "master");
+
+                Assert.Equal(serviceBusRequest.Id, sqlDependency.ParentId);
+                Assert.Equal(serviceBusRequest, sqlDependency.Parent);
+            });
+        }
+
+        [Fact]
+        public async Task ServiceBusMessagePump_WithW3CCorrelationFormatViaOpenTelemetry_AutomaticallyTracksMicrosoftDependencies()
+        {
+            // Arrange
+            var options = new WorkerOptions();
+
+            string operationName = Guid.NewGuid().ToString();
+            options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt =>
+            {
+                opt.AutoComplete = true;
+                opt.Routing.Telemetry.OperationName = operationName;
+            }).WithServiceBusMessageHandler<OrderWithAutoTrackingAzureServiceBusMessageHandler, Order>();
+
+            var activities = new Collection<Activity>();
+            options.AddOpenTelemetry()
+                   .WithTracing(traces =>
+                   {
+                       traces.AddSource(operationName);
+                       traces.AddInMemoryExporter(activities);
+                       traces.AddSqlClientInstrumentation();
+                       traces.AddServiceBusInstrumentation();
+                       traces.SetSampler(new AlwaysOnSampler());
+                   });
+
+            ServiceBusMessage message = CreateOrderServiceBusMessageForW3C();
+
+            // Act / Assert
+            await TestServiceBusMessageHandlingAsync(options, Queue, message, async () =>
+            {
+                (string transactionId, string _) = message.ApplicationProperties.GetTraceParent();
+
+                Activity serviceBusRequest = await GetRequestActivityAsync(activities, a => a.OperationName == operationName && a.TraceId.ToHexString() == transactionId);
+                Activity sqlDependency = await GetDependencyActivityAsync(activities, a => a.OperationName == "master" && a.TraceId.ToHexString() == transactionId);
+
+                Assert.Equal(serviceBusRequest.Id, sqlDependency.ParentId);
+                Assert.Equal(serviceBusRequest, sqlDependency.Parent);
+            });
+        }
+
+        private async Task<Activity> GetRequestActivityAsync(IReadOnlyCollection<Activity> activities, Func<Activity, bool> filter)
+        {
+            return await Poll.Target<Activity, XunitException>(() =>
+            {
+                return Assert.Single(activities, a =>
+                {
+                    return a.Tags.Any(tag => tag is { Key: "ServiceBus-EntityType", Value: "Queue" })
+                           && filter(a);
+                });
+
+            }).FailWith("cannot find request telemetry in spied-upon OpenTelemetry activities");
+        }
+
+        private async Task<Activity> GetDependencyActivityAsync(IReadOnlyCollection<Activity> activities, Func<Activity, bool> filter)
+        {
+            return await Poll.Target<Activity, XunitException>(() =>
+            {
+                return Assert.Single(activities, a => filter(a));
+
+            }).FailWith("cannot find dependency telemetry in spied-upon OpenTelemetry activities");
+        }
+
+        [Fact]
+        public async Task ServiceBusMessagePump_WithW3CCorrelationFormatViaSerilog_AutomaticallyTracksMicrosoftDependencies()
+        {
+            // Arrange
+            var options = new WorkerOptions();
+
+            string operationName = Guid.NewGuid().ToString();
+            options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt =>
             {
                 opt.AutoComplete = true;
                 opt.Routing.Telemetry.OperationName = operationName;
 
             }).WithServiceBusMessageHandler<OrderWithAutoTrackingAzureServiceBusMessageHandler, Order>();
-            
+
+            options.AddSingleton<IHostingEnvironment>(new HostingEnvironment());
+            options.AddApplicationInsightsTelemetry();
+            options.AddSerilogServiceBusTelemetry();
+
             var spySink = new InMemoryApplicationInsightsTelemetryConverter();
             var spyChannel = new InMemoryTelemetryChannel();
             WithTelemetryChannel(options, spyChannel);
@@ -68,11 +179,11 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
         }
 
         [Fact]
-        public async Task ServiceBusMessagePump_WithW3CCorrelationFormatForNewParent_AutomaticallyTracksMicrosoftDependencies()
+        public async Task ServiceBusMessagePump_WithW3CCorrelationFormatForNewParentViaSerilog_AutomaticallyTracksMicrosoftDependencies()
         {
-             // Arrange
-             var options = new WorkerOptions();
-            
+            // Arrange
+            var options = new WorkerOptions();
+
             string operationName = Guid.NewGuid().ToString();
             options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt =>
             {
@@ -80,7 +191,11 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
                 opt.AutoComplete = true;
 
             }).WithServiceBusMessageHandler<OrderWithAutoTrackingAzureServiceBusMessageHandler, Order>();
-            
+
+            options.AddSingleton<IHostingEnvironment>(new HostingEnvironment());
+            options.AddApplicationInsightsTelemetry();
+            options.AddSerilogServiceBusTelemetry();
+
             var spySink = new InMemoryApplicationInsightsTelemetryConverter();
             var spyChannel = new InMemoryTelemetryChannel();
             WithTelemetryConverter(options, spySink);
@@ -112,10 +227,10 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
 
         private static async Task<RequestTelemetry> GetTelemetryRequestAsync(InMemoryApplicationInsightsTelemetryConverter spySink, string operationName, Func<RequestTelemetry, bool> filter = null)
         {
-            return await Poll.Target(() => AssertX.GetRequestFrom(spySink.Telemetries, r => 
+            return await Poll.Target(() => AssertX.GetRequestFrom(spySink.Telemetries, r =>
             {
-                return r.Name == operationName 
-                       && r.Properties[EntityType] == Queue.ToString() 
+                return r.Name == operationName
+                       && r.Properties[EntityType] == Queue.ToString()
                        && (filter is null || filter(r));
             })).FailWith($"cannot find request telemetry in spied-upon Serilog sink with operation name: {operationName}");
         }
@@ -124,7 +239,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
         {
             return await Poll.Target(() => AssertX.GetDependencyFrom(spyChannel.Telemetries, d =>
             {
-                return d.Type == dependencyType 
+                return d.Type == dependencyType
                        && (filter is null || filter(d));
             })).FailWith($"cannot find dependency telemetry in spied-upon Application Insights channel with dependency type: {dependencyType}");
         }
@@ -133,7 +248,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
         {
             return await Poll.Target(() => AssertX.GetDependencyFrom(spySink.Telemetries, d =>
             {
-                return d.Type == dependencyType 
+                return d.Type == dependencyType
                        && (filter is null || filter(d));
             })).FailWith($"cannot find dependency telemetry in spied-upon Application Insights channel with dependency type: {dependencyType}");
         }
@@ -151,7 +266,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
                        opt.Routing.Correlation.Format = MessageCorrelationFormat.Hierarchical;
 
                    }).WithServiceBusMessageHandler<OrdersSabotageAzureServiceBusMessageHandler, Order>();
-            
+
             string operationId = $"operation-{Guid.NewGuid()}", transactionId = $"transaction-{Guid.NewGuid()}";
             Order order = OrderGenerator.Generate();
             ServiceBusMessage orderMessage =
