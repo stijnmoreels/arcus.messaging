@@ -1,6 +1,8 @@
 ﻿using System;
 using Arcus.Messaging.Abstractions.ServiceBus.MessageHandling;
 
+#pragma warning disable CS0618
+
 namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
 {
     /// <summary>
@@ -29,6 +31,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// <remarks>
         ///     Provides capability to create and delete these subscriptions. This requires 'Manage' permissions on the Azure Service Bus Topic or namespace.
         /// </remarks>
+        [Obsolete("Will be removed in v3.0 as automatic Azure Service bus topic subscription creation and deletion will not be supported anymore")]
         public TopicSubscription? TopicSubscription { get; set; }
 
         /// <summary>
@@ -80,6 +83,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// <summary>
         /// Gets or sets the flag to indicate whether or not to emit security events during the lifetime of the message pump.
         /// </summary>
+        [Obsolete("Will be removed in v3.0 as the direct link to Arcus.Observability will be removed as well")]
         public bool EmitSecurityEvents { get; set; } = false;
 
         /// <summary>
@@ -104,6 +108,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// Gets or sets the timeout when the message pump tries to restart and re-authenticate during key rotation.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the <paramref name="value"/> is less than <see cref="TimeSpan.Zero"/>.</exception>
+        [Obsolete("Will be removed in v3.0 as the key rotation functionality will be removed as well")]
         public TimeSpan KeyRotationTimeout
         {
             get => _keyRotationTimeout;
@@ -145,15 +150,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// <summary>
         /// Gets the default consumer-configurable options for Azure Service Bus Queue message pumps.
         /// </summary>
-        internal static AzureServiceBusMessagePumpOptions DefaultQueueOptions => new AzureServiceBusMessagePumpOptions()
-        {
-            TopicSubscription = null
-        };
-
-        /// <summary>
-        /// Gets the default consumer-configurable options for Azure Service Bus Topic message pumps.
-        /// </summary>
-        internal static AzureServiceBusMessagePumpOptions DefaultTopicOptions => new AzureServiceBusMessagePumpOptions()
+        internal static AzureServiceBusMessagePumpOptions DefaultOptions => new AzureServiceBusMessagePumpOptions()
         {
             TopicSubscription = ServiceBus.TopicSubscription.None
         };

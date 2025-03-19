@@ -135,12 +135,14 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         /// <param name="cancellationToken">Indicates that the start process has been aborted.</param>
         public override async Task StartAsync(CancellationToken cancellationToken)
         {
+#pragma warning disable CS0618
             if (Settings.ServiceBusEntity == ServiceBusEntityType.Topic
                 && Settings.Options.TopicSubscription.HasValue
                 && Settings.Options.TopicSubscription.Value.HasFlag(TopicSubscription.Automatic))
             {
                 _ownsTopicSubscription = await CreateTopicSubscriptionAsync(cancellationToken);
             }
+#pragma warning restore
 
             await base.StartAsync(cancellationToken);
         }
@@ -148,7 +150,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         private async Task<bool> CreateTopicSubscriptionAsync(CancellationToken cancellationToken)
         {
             ServiceBusAdministrationClient serviceBusClient = await Settings.GetServiceBusAdminClientAsync();
-            string entityPath = await Settings.GetEntityPathAsync();
+            string entityPath = Settings.EntityName;
 
             try
             {
@@ -390,6 +392,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
                 await _messageReceiver.CloseAsync();
             }
 
+#pragma warning disable CS0618
             if (Settings.ServiceBusEntity == ServiceBusEntityType.Topic
                 && Settings.Options.TopicSubscription.HasValue
                 && Settings.Options.TopicSubscription.Value.HasFlag(TopicSubscription.Automatic)
@@ -397,6 +400,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
             {
                 await DeleteTopicSubscriptionAsync(cancellationToken);
             }
+#pragma warning restore
 
             await base.StopAsync(cancellationToken);
             _isHostShuttingDown = true;
@@ -407,7 +411,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         private async Task DeleteTopicSubscriptionAsync(CancellationToken cancellationToken)
         {
             ServiceBusAdministrationClient serviceBusClient = await Settings.GetServiceBusAdminClientAsync();
-            string entityPath = await Settings.GetEntityPathAsync();
+            string entityPath = Settings.EntityName;
 
             try
             {
@@ -483,12 +487,15 @@ namespace Arcus.Messaging.Pumps.ServiceBus
                 (string transactionId, string operationParentId) = message.ApplicationProperties.GetTraceParent();
 
                 return new MessageCorrelationInfo(operationId, transactionId, operationParentId);
+#pragma warning restore
             }
 
             MessageCorrelationInfo correlationInfo =
+#pragma warning disable CS0618 // Type or member is obsolete: will be removed in v3.0, once the 'Hierarchical' correlation format is removed.
                 message.GetCorrelationInfo(
                     Settings.Options.Routing.Correlation?.TransactionIdPropertyName ?? PropertyNames.TransactionId,
                     Settings.Options.Routing.Correlation?.OperationParentIdPropertyName ?? PropertyNames.OperationParentId);
+#pragma warning restore CS0618 // Type or member is obsolete
 
             return correlationInfo;
         }

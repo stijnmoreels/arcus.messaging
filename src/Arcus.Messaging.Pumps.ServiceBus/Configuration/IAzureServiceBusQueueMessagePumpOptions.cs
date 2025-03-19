@@ -30,6 +30,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// <summary>
         /// Gets or sets the flag to indicate whether or not to emit security events during the lifetime of the message pump.
         /// </summary>
+        [Obsolete("Will be removed in v3.0 as the direct link to Arcus.Observability will be removed as well")]
         bool EmitSecurityEvents { get; set; }
 
         /// <summary>
@@ -42,6 +43,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// Gets or sets the timeout when the message pump tries to restart and re-authenticate during key rotation.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the <paramref name="value"/> is less than <see cref="TimeSpan.Zero"/>.</exception>
+        [Obsolete("Will be removed in v3.0 as the key rotation functionality will be removed as well")]
         TimeSpan KeyRotationTimeout { get; set; }
 
         /// <summary>

@@ -1,6 +1,6 @@
-﻿﻿using System;
- using System.Linq;
- using System.Threading.Tasks;
+﻿using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Arcus.Messaging.Abstractions.ServiceBus;
 using Arcus.Messaging.Abstractions.ServiceBus.MessageHandling;
 using Arcus.Messaging.Pumps.ServiceBus;
@@ -11,10 +11,10 @@ using Arcus.Messaging.Tests.Integration.MessagePump.ServiceBus;
 using Arcus.Messaging.Tests.Workers.MessageHandlers;
 using Arcus.Messaging.Tests.Workers.ServiceBus.MessageHandlers;
 using Azure;
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Xunit;
 using static Arcus.Messaging.Tests.Integration.MessagePump.ServiceBus.DiskMessageEventConsumer;
 using static Microsoft.Extensions.Logging.ServiceBusEntityType;
@@ -29,7 +29,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             await TestServiceBusQueueDeadLetteredMessageAsync(options =>
             {
                 options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt => opt.AutoComplete = false)
-                       .WithServiceBusMessageHandler<CustomerMessageHandler, Customer>(context => context.Properties["Topic"].ToString() == "Customers")
+                       .WithServiceBusMessageHandler<CustomerMessageHandler, Customer>(opt => opt.AddMessageContextFilter(context => context.Properties["Topic"].ToString() == "Customers"))
                        .WithServiceBusMessageHandler<DeadLetterAzureServiceMessageHandler, Order>()
                        .WithMessageHandler<PassThruOrderMessageHandler, Order, AzureServiceBusMessageContext>((AzureServiceBusMessageContext _) => false);
             });
@@ -41,7 +41,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             await TestServiceBusQueueDeadLetteredMessageAsync(options =>
             {
                 options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt => opt.AutoComplete = false)
-                       .WithServiceBusMessageHandler<ShipmentAzureServiceBusMessageHandler, Shipment>((AzureServiceBusMessageContext _) => true)
+                       .WithServiceBusMessageHandler<ShipmentAzureServiceBusMessageHandler, Shipment>(opt => opt.AddMessageContextFilter(_ => true))
                        .WithServiceBusFallbackMessageHandler<DeadLetterAzureServiceBusFallbackMessageHandler>();
             });
         }
@@ -68,7 +68,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             {
                 options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName)
                        .WithServiceBusMessageHandler<PassThruOrderMessageHandler, Order>((AzureServiceBusMessageContext _) => false)
-                       .WithServiceBusMessageHandler<AbandonAzureServiceBusMessageHandler, Order>((AzureServiceBusMessageContext _) => true);
+                       .WithServiceBusMessageHandler<AbandonAzureServiceBusMessageHandler, Order>(opt => opt.AddMessageContextFilter(_ => true));
             });
         }
 
@@ -90,7 +90,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             configureOptions(options);
 
             ServiceBusMessage message = CreateOrderServiceBusMessageForW3C();
-            
+
             // Act
             await TestServiceBusMessageHandlingAsync(options, Queue, message, async () =>
             {
@@ -108,9 +108,9 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName, configureMessagePump: opt => opt.AutoComplete = false)
                    .WithServiceBusMessageHandler<CustomerMessageHandler, Customer>()
                    .WithServiceBusFallbackMessageHandler<CompleteAzureServiceBusFallbackMessageHandler>();
-            
+
             ServiceBusMessage message = CreateOrderServiceBusMessageForW3C();
-            
+
             // Act
             await TestServiceBusMessageHandlingAsync(options, Queue, message, async () =>
             {
@@ -204,7 +204,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             options.AddServiceBusTopicMessagePumpUsingManagedIdentity(TopicName, HostName)
                    .WithServiceBusMessageHandler<WriteOrderToDiskAzureServiceBusMessageHandler, Order>();
 
-            ServiceBusMessage[] messages = 
+            ServiceBusMessage[] messages =
                 Bogus.Make(50, () => CreateOrderServiceBusMessageForW3C()).ToArray();
 
             await using var worker = await Worker.StartNewAsync(options);
@@ -226,7 +226,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
         {
             await TestServiceBusMessageHandlingAsync(pump =>
             {
-                pump.WithServiceBusMessageHandler<CustomerMessageHandler, Customer>(context => context.Properties["Topic"].ToString() == "Customers")
+                pump.WithServiceBusMessageHandler<CustomerMessageHandler, Customer>(opt => opt.AddMessageContextFilter(context => context.Properties["Topic"].ToString() == "Customers"))
                     .WithServiceBusMessageHandler<DeadLetterAzureServiceMessageHandler, Order>()
                     .WithMessageHandler<PassThruOrderMessageHandler, Order, AzureServiceBusMessageContext>((AzureServiceBusMessageContext _) => false);
             },
@@ -242,7 +242,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             await TestServiceBusMessageHandlingAsync(
                 pump =>
                 {
-                    pump.WithServiceBusMessageHandler<ShipmentAzureServiceBusMessageHandler, Shipment>((AzureServiceBusMessageContext _) => true)
+                    pump.WithServiceBusMessageHandler<ShipmentAzureServiceBusMessageHandler, Shipment>(opt => opt.AddMessageContextFilter(_ => true))
                         .WithServiceBusFallbackMessageHandler<DeadLetterAzureServiceBusFallbackMessageHandler>();
                 },
                 async (message, consumer) =>
@@ -257,8 +257,8 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             await TestServiceBusMessageHandlingAsync(
                 pump =>
                 {
-                    pump.WithServiceBusMessageHandler<PassThruOrderMessageHandler, Order>((AzureServiceBusMessageContext _) => false)
-                        .WithServiceBusMessageHandler<AbandonAzureServiceBusMessageHandler, Order>((AzureServiceBusMessageContext _) => true);
+                    pump.WithServiceBusMessageHandler<PassThruOrderMessageHandler, Order>(opt => opt.AddMessageContextFilter(_ => false))
+                        .WithServiceBusMessageHandler<AbandonAzureServiceBusMessageHandler, Order>(opt => opt.AddMessageContextFilter(_ => true));
                 },
                 async (message, consumer) =>
                 {
@@ -314,7 +314,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
                 pump =>
                 {
                     pump.WithServiceBusMessageHandler<OrdersSabotageAzureServiceBusMessageHandler, Order>();
-                }, 
+                },
                 async (message, consumer) =>
                 {
                     await consumer.AssertAbandonMessageAsync(message.MessageId);
@@ -372,7 +372,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             Func<ServiceBusMessage, TestServiceMessageConsumer, Task> assertion)
         {
             var options = new WorkerOptions();
-            ServiceBusMessageHandlerCollection collection = options.AddServiceBusQueueMessagePumpUsingManagedIdentity(QueueName, HostName);
+            ServiceBusMessageHandlerCollection collection = options.AddServiceBusQueueMessagePump(QueueName, HostName, new DefaultAzureCredential());
 
             configurePump(collection);
 
@@ -399,20 +399,38 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             // Arrange
             var options = new WorkerOptions();
             var subscriptionName = $"Subscription-{Guid.NewGuid():N}";
-            options.AddServiceBusTopicMessagePumpUsingManagedIdentity(
-                       TopicName,
-                       subscriptionName, 
-                       HostName, 
-                       configureMessagePump: opt => opt.TopicSubscription = topicSubscription)
-                   .WithServiceBusMessageHandler<WriteOrderToDiskAzureServiceBusMessageHandler, Order>();
-            
+
+            AddServiceBusTopicMessagePump(options, subscriptionName, topicSubscription)
+                    .WithServiceBusMessageHandler<WriteOrderToDiskAzureServiceBusMessageHandler, Order>();
+
             // Act
             await using var worker = await Worker.StartNewAsync(options);
-            
+
             // Assert
-            ServiceBusAdministrationClient client = _serviceBusConfig.GetAdminClient();
-            Response<bool> subscriptionExistsResponse = await client.SubscriptionExistsAsync(TopicName, subscriptionName);
+            ServiceBusAdministrationClient adminClient = _serviceBusConfig.GetAdminClient();
+            Response<bool> subscriptionExistsResponse = await adminClient.SubscriptionExistsAsync(TopicName, subscriptionName);
             Assert.Equal(doesSubscriptionExists, subscriptionExistsResponse.Value);
+        }
+
+        private ServiceBusMessageHandlerCollection AddServiceBusTopicMessagePump(
+            WorkerOptions options,
+            string subscriptionName,
+            TopicSubscription topicSubscription)
+        {
+            var credential = new DefaultAzureCredential();
+
+            options.AddXunitTestLogging(_outputWriter);
+            return topicSubscription switch
+            {
+                TopicSubscription.None =>
+                    options.AddServiceBusTopicMessagePump(
+                        TopicName, subscriptionName, _ => new ServiceBusClient(HostName, credential), opt => opt.TopicSubscription = TopicSubscription.None),
+
+                TopicSubscription.Automatic =>
+                    options.AddServiceBusTopicMessagePumpUsingManagedIdentity(TopicName, subscriptionName, HostName, configureMessagePump: opt => opt.TopicSubscription = TopicSubscription.Automatic),
+
+                _ => throw new ArgumentOutOfRangeException(nameof(topicSubscription), topicSubscription, "Unknown topic subscription")
+            };
         }
 
         [Fact]
@@ -422,7 +440,7 @@ namespace Arcus.Messaging.Tests.Integration.MessagePump
             {
                 options.AddServiceBusTopicMessagePumpUsingManagedIdentity(
                            TopicName,
-                           subscriptionName: "Test-Receive-All-Topic-Only-with-an-azure-servicebus-topic-subscription-name-over-50-characters", 
+                           subscriptionName: "Test-Receive-All-Topic-Only-with-an-azure-servicebus-topic-subscription-name-over-50-characters",
                            HostName,
                            configureMessagePump: opt =>
                            {
