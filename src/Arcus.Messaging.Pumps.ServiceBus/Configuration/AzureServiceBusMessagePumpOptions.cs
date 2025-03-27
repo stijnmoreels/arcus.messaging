@@ -1,5 +1,6 @@
 ﻿using System;
 using Arcus.Messaging.Abstractions.ServiceBus.MessageHandling;
+using Microsoft.Extensions.DependencyInjection;
 
 #pragma warning disable CS0618
 
@@ -141,6 +142,11 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
                 _maximumUnauthorizedExceptionsBeforeRestart = value;
             }
         }
+
+        /// <summary>
+        /// Gets the consumer configurable options model to change the behavior of the tracked Azure Service bus request telemetry.
+        /// </summary>
+        public ServiceBusMessageTelemetryOptions Telemetry { get; } = new ServiceBusMessageTelemetryOptions();
 
         /// <summary>
         /// Gets the consumer-configurable options to change the behavior of the message router.

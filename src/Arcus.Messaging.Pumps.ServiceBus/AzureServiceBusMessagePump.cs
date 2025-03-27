@@ -11,7 +11,6 @@ using Arcus.Messaging.Pumps.Abstractions;
 using Arcus.Messaging.Pumps.ServiceBus.Configuration;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
-using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -26,6 +25,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
     public class AzureServiceBusMessagePump : MessagePump, IRestartableMessagePump
     {
         private readonly IAzureServiceBusMessageRouter _messageRouter;
+        private readonly IServiceBusMessageCorrelationScope _messageCorrelationScope;
         private readonly IDisposable _loggingScope;
 
         private bool _ownsTopicSubscription, _isHostShuttingDown;
@@ -79,6 +79,23 @@ namespace Arcus.Messaging.Pumps.ServiceBus
             SubscriptionName = Settings.SubscriptionName;
 
             _messageRouter = messageRouter ?? throw new ArgumentNullException(nameof(messageRouter));
+            _loggingScope = logger?.BeginScope("Job: {JobId}", JobId);
+        }
+
+        internal AzureServiceBusMessagePump(
+            AzureServiceBusMessagePumpSettings settings,
+            IServiceProvider serviceProvider,
+            IAzureServiceBusMessageRouter messageRouter,
+            IServiceBusMessageCorrelationScope correlationScope,
+            ILogger<AzureServiceBusMessagePump> logger)
+            : base(serviceProvider, logger)
+        {
+            Settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            JobId = Settings.Options.JobId;
+            SubscriptionName = Settings.SubscriptionName;
+
+            _messageRouter = messageRouter ?? throw new ArgumentNullException(nameof(messageRouter));
+            _messageCorrelationScope = correlationScope;
             _loggingScope = logger?.BeginScope("Job: {JobId}", JobId);
         }
 
@@ -482,10 +499,11 @@ namespace Arcus.Messaging.Pumps.ServiceBus
                 Logger.LogTrace("No operation ID was found on the message '{MessageId}' during processing in the Azure Service Bus {EntityType} message pump '{JobId}'", message.MessageId, Settings.ServiceBusEntity, JobId);
             }
 
-            using MessageCorrelationResult correlationResult = DetermineMessageCorrelation(message);
             AzureServiceBusMessageContext messageContext = message.GetMessageContext(JobId, Settings.ServiceBusEntity);
+            using MessageCorrelationResult correlationResult = _messageCorrelationScope.StartOperation(messageContext, Settings.Options.Telemetry);
 
             MessageProcessingResult routingResult = await _messageRouter.RouteMessageAsync(_messageReceiver, message, messageContext, correlationResult.CorrelationInfo, cancellationToken);
+            correlationResult.IsSuccessful = routingResult.IsSuccessful;
 
             if (routingResult.IsSuccessful && Settings.Options.AutoComplete)
             {
@@ -506,29 +524,6 @@ namespace Arcus.Messaging.Pumps.ServiceBus
             }
 
             return routingResult;
-        }
-
-        private MessageCorrelationResult DetermineMessageCorrelation(ServiceBusReceivedMessage message)
-        {
-            if (Settings.Options.Routing.Correlation.Format is MessageCorrelationFormat.W3C)
-            {
-                (string transactionId, string operationParentId) = message.ApplicationProperties.GetTraceParent();
-                var client = ServiceProvider.GetRequiredService<TelemetryClient>();
-
-#pragma warning disable CS0618 // Type or member is obsolete: will be moved to a Telemetry-specific library in v3.0
-                return MessageCorrelationResult.Create(client, transactionId, operationParentId);
-#pragma warning restore
-            }
-
-            MessageCorrelationInfo correlationInfo =
-#pragma warning disable CS0618 // Type or member is obsolete: will be removed in v3.0, once the 'Hierarchical' correlation format is removed.
-                message.GetCorrelationInfo(
-                    Settings.Options.Routing.Correlation?.TransactionIdPropertyName ?? PropertyNames.TransactionId,
-                    Settings.Options.Routing.Correlation?.OperationParentIdPropertyName ?? PropertyNames.OperationParentId);
-
-            return MessageCorrelationResult.Create(correlationInfo);
-#pragma warning restore CS0618 // Type or member is obsolete
-
         }
 
         private static async Task UntilCancelledAsync(CancellationToken cancellationToken)

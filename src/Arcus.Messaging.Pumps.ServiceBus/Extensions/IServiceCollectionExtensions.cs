@@ -1140,10 +1140,11 @@ namespace Microsoft.Extensions.DependencyInjection
             services.AddHostedService(provider =>
             {
                 var router = provider.GetService<IAzureServiceBusMessageRouter>();
+                var correlationScope = provider.GetRequiredService<IServiceBusMessageCorrelationScope>();
                 var logger = provider.GetService<ILogger<AzureServiceBusMessagePump>>();
 
                 AzureServiceBusMessagePumpSettings settings = createSettings(provider, options);
-                return new AzureServiceBusMessagePump(settings, provider, router, logger);
+                return new AzureServiceBusMessagePump(settings, provider, router, correlationScope, logger);
             });
 
             return collection;

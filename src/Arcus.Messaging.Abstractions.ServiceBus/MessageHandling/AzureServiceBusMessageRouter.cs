@@ -4,13 +4,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Arcus.Messaging.Abstractions.MessageHandling;
-using Arcus.Messaging.Abstractions.Telemetry;
 using Arcus.Observability.Telemetry.Core;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Serilog.Context;
 using static Arcus.Messaging.Abstractions.MessageHandling.MessageProcessingError;
 using ServiceBusFallbackMessageHandler = Arcus.Messaging.Abstractions.MessageHandling.FallbackMessageHandler<Azure.Messaging.ServiceBus.ServiceBusReceivedMessage, Arcus.Messaging.Abstractions.ServiceBus.AzureServiceBusMessageContext>;
 
@@ -238,30 +236,13 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
                 throw new ArgumentNullException(nameof(correlationInfo));
             }
 
-            string entityName = messageReceiver?.EntityPath ?? "<not-available>";
-            string serviceBusNamespace = messageReceiver?.FullyQualifiedNamespace ?? "<not-available>";
+            using IServiceScope scope = ServiceProvider.CreateScope();
 
-            using DurationMeasurement measurement = DurationMeasurement.Start();
-            using IServiceScope serviceScope = ServiceProvider.CreateScope();
-#pragma warning disable CS0618 // Type or member is obsolete: will be refactored when moving towards v3.0.
-            using IDisposable _ = LogContext.Push(new MessageCorrelationInfoEnricher(correlationInfo, Options.CorrelationEnricher));
-#pragma warning restore CS0618 // Type or member is obsolete
+            var accessor = scope.ServiceProvider.GetService<IMessageCorrelationInfoAccessor>();
+            accessor?.SetCorrelationInfo(correlationInfo);
 
-            try
-            {
-                var accessor = serviceScope.ServiceProvider.GetService<IMessageCorrelationInfoAccessor>();
-                accessor?.SetCorrelationInfo(correlationInfo);
-
-                MessageProcessingResult routingResult = await TryRouteMessageWithPotentialFallbackAsync(serviceScope.ServiceProvider, messageReceiver, message, messageContext, correlationInfo, cancellationToken);
-
-                Logger.LogServiceBusRequest(serviceBusNamespace, entityName, Options.Telemetry.OperationName, routingResult.IsSuccessful, measurement, messageContext.EntityType);
-                return routingResult;
-            }
-            catch
-            {
-                Logger.LogServiceBusRequest(serviceBusNamespace, entityName, Options.Telemetry.OperationName, false, measurement, messageContext.EntityType);
-                throw;
-            }
+            MessageProcessingResult routingResult = await TryRouteMessageWithPotentialFallbackAsync(scope.ServiceProvider, messageReceiver, message, messageContext, correlationInfo, cancellationToken);
+            return routingResult;
         }
 
         private async Task<MessageProcessingResult> TryRouteMessageWithPotentialFallbackAsync(
