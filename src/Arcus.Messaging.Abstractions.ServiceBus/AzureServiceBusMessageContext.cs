@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Logging;
 
@@ -11,6 +13,9 @@ namespace Arcus.Messaging.Abstractions.ServiceBus
     /// </summary>
     public class AzureServiceBusMessageContext : MessageContext
     {
+        private readonly ServiceBusReceiver _receiver;
+        private readonly ServiceBusReceivedMessage _message;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="AzureServiceBusMessageContext"/> class.
         /// </summary>
@@ -67,6 +72,9 @@ namespace Arcus.Messaging.Abstractions.ServiceBus
             ServiceBusReceivedMessage message)
             : base(message.MessageId, jobId, message.ApplicationProperties.ToDictionary(item => item.Key, item => item.Value))
         {
+            _receiver = receiver;
+            _message = message;
+
             FullyQualifiedNamespace = receiver.FullyQualifiedNamespace;
             EntityPath = receiver.EntityPath;
             EntityType = entityType;
@@ -138,6 +146,66 @@ namespace Arcus.Messaging.Abstractions.ServiceBus
             }
 
             return new AzureServiceBusMessageContext(jobId, entityType, receiver, message);
+        }
+
+        /// <summary>
+        /// Completes the Azure Service Bus message on Azure. This will delete the message from the service.
+        /// </summary>
+        /// <param name="cancellationToken">The optional <see cref="CancellationToken" /> instance to signal the request to cancel the operation.</param>
+        public async Task CompleteMessageAsync(CancellationToken cancellationToken = default)
+        {
+            await _receiver.CompleteMessageAsync(_message, cancellationToken);
+        }
+
+        /// <summary>
+        /// Abandons an Azure Service bus on Azure.
+        /// This will make the message available again for immediate processing as the lock on the message held by the receiver will be released.
+        /// </summary>
+        /// <param name="cancellationToken">An optional <see cref="T:System.Threading.CancellationToken" /> instance to signal the request to cancel the operation.</param>
+        public async Task AbandonMessageAsync(CancellationToken cancellationToken = default)
+        {
+            await _receiver.AbandonMessageAsync(_message, cancellationToken: cancellationToken);
+        }
+
+        /// <summary>
+        /// Abandons an Azure Service bus on Azure.
+        /// This will make the message available again for immediate processing as the lock on the message held by the receiver will be released.
+        /// </summary>
+        /// <param name="propertiesToModify">The properties of the message to modify while abandoning the message.</param>
+        /// <param name="cancellationToken">An optional <see cref="T:System.Threading.CancellationToken" /> instance to signal the request to cancel the operation.</param>
+        public async Task AbandonMessageAsync(IDictionary<string, object> propertiesToModify, CancellationToken cancellationToken = default)
+        {
+            await _receiver.AbandonMessageAsync(_message, propertiesToModify, cancellationToken);
+        }
+
+        /// <summary>
+        /// Dead letters the Azure Service bus message on Azure.
+        /// </summary>
+        /// <param name="deadLetterReason">The reason for dead-lettering the message.</param>
+        /// <param name="deadLetterErrorDescription">The error description for dead-lettering the message.</param>
+        /// <param name="cancellationToken">The optional <see cref="CancellationToken" /> instance to signal the request to cancel the operation.</param>
+        public async Task DeadLetterMessageAsync(
+            string deadLetterReason,
+            string deadLetterErrorDescription,
+            CancellationToken cancellationToken = default)
+        {
+            await _receiver.DeadLetterMessageAsync(_message, deadLetterReason, deadLetterErrorDescription, cancellationToken);
+        }
+
+        /// <summary>
+        /// Dead letters the Azure Service bus message on Azure.
+        /// </summary>
+        /// <param name="deadLetterReason">The reason for dead-lettering the message.</param>
+        /// <param name="deadLetterErrorDescription">The error description for dead-lettering the message.</param>
+        /// <param name="propertiesToModify">The properties of the message to modify while moving to sub-queue.</param>
+        /// <param name="cancellationToken">The optional <see cref="CancellationToken" /> instance to signal the request to cancel the operation.</param>
+        public async Task DeadLetterMessageAsync(
+            string deadLetterReason,
+            string deadLetterErrorDescription,
+            IDictionary<string, object> propertiesToModify,
+            CancellationToken cancellationToken = default)
+        {
+            await _receiver.DeadLetterMessageAsync(_message, propertiesToModify, deadLetterReason, deadLetterErrorDescription, cancellationToken);
         }
     }
 }

@@ -9,6 +9,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
     /// <summary>
     /// Represents a <see cref="IAzureServiceBusMessageHandler{TMessage}"/> template to control the Azure Service Bus message operations during the handling of the deserialized message.
     /// </summary>
+    [Obsolete("Use the " + nameof(AzureServiceBusMessageContext.DeadLetterMessageAsync) + " or " + nameof(AzureServiceBusMessageContext.AbandonMessageAsync) + " on the " + nameof(AzureServiceBusMessageContext) + " to run Azure Service bus-specific operations in message handler implementations")]
     public abstract class AzureServiceBusMessageHandler<TMessage> : AzureServiceBusMessageHandlerTemplate, IAzureServiceBusMessageHandler<TMessage>
     {
         /// <summary>

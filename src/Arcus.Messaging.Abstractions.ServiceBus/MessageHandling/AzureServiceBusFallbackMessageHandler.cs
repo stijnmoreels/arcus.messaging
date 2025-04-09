@@ -10,6 +10,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
     /// <summary>
     /// Represents a <see cref="IAzureServiceBusFallbackMessageHandler"/> template to control the Azure Service Bus message operations during the fallback handling of the message.
     /// </summary>
+    [Obsolete("Use the " + nameof(AzureServiceBusMessageContext.DeadLetterMessageAsync) + " or " + nameof(AzureServiceBusMessageContext.AbandonMessageAsync) + " on the " + nameof(AzureServiceBusMessageContext) + " to run Azure Service bus-specific operations in message handler implementations")]
     public abstract class AzureServiceBusFallbackMessageHandler : AzureServiceBusMessageHandlerTemplate, IAzureServiceBusFallbackMessageHandler
     {
         /// <summary>

@@ -4,19 +4,11 @@ using Arcus.Messaging.Abstractions;
 using Arcus.Messaging.Abstractions.ServiceBus;
 using Arcus.Messaging.Abstractions.ServiceBus.MessageHandling;
 using Arcus.Messaging.Tests.Core.Messages.v1;
-using Microsoft.Extensions.Logging;
 
 namespace Arcus.Messaging.Tests.Workers.MessageHandlers
 {
-    public class DeadLetterAzureServiceMessageHandler : AzureServiceBusMessageHandler<Order>
+    public class DeadLetterAzureServiceMessageHandler : IAzureServiceBusMessageHandler<Order>
     {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="AzureServiceBusMessageHandlerTemplate"/> class.
-        /// </summary>
-        public DeadLetterAzureServiceMessageHandler(ILogger<DeadLetterAzureServiceMessageHandler> logger) : base(logger)
-        {
-        }
-
         /// <summary>
         ///     Process a new message that was received
         /// </summary>
@@ -27,15 +19,13 @@ namespace Arcus.Messaging.Tests.Workers.MessageHandlers
         ///     identifiers
         /// </param>
         /// <param name="cancellationToken">Cancellation token</param>
-        public override async Task ProcessMessageAsync(
+        public async Task ProcessMessageAsync(
             Order message,
             AzureServiceBusMessageContext messageContext,
             MessageCorrelationInfo correlationInfo,
             CancellationToken cancellationToken)
         {
-            Logger.LogTrace("Dead letter message '{OrderId}'...", message.Id);
-            await DeadLetterMessageAsync();
-            Logger.LogInformation("Message '{OrderId}' is dead lettered", message.Id);
+            await messageContext.DeadLetterMessageAsync("[Test] dead-letter reason", "dead-letter message via test message handler", cancellationToken);
         }
     }
 }

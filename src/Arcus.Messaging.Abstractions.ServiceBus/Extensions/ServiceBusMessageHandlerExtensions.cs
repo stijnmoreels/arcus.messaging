@@ -109,6 +109,9 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <typeparam name="TMessageHandler">The type of the fallback message handler.</typeparam>
         /// <param name="handlers">The handlers to add the fallback message handler to.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="handlers"/> is <c>null</c>.</exception>
+        [Obsolete("Fallback message handlers will be removed in v3.0, use the "
+                  + nameof(AzureServiceBusMessageContext.DeadLetterMessageAsync) + " or " + nameof(AzureServiceBusMessageContext.AbandonMessageAsync)
+                  + " on the " + nameof(AzureServiceBusMessageContext) + " to run Azure Service bus-specific operations in message handler implementations")]
         public static ServiceBusMessageHandlerCollection WithServiceBusFallbackMessageHandler<TMessageHandler>(
             this ServiceBusMessageHandlerCollection handlers)
             where TMessageHandler : IAzureServiceBusFallbackMessageHandler
@@ -129,6 +132,9 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <param name="handlers">The handlers to add the fallback message handler to.</param>
         /// <param name="createImplementation">The function to create the fallback message handler.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="handlers"/> or the <paramref name="createImplementation"/> is <c>null</c>.</exception>
+        [Obsolete("Fallback message handlers will be removed in v3.0, use the "
+                  + nameof(AzureServiceBusMessageContext.DeadLetterMessageAsync) + " or " + nameof(AzureServiceBusMessageContext.AbandonMessageAsync)
+                  + " on the " + nameof(AzureServiceBusMessageContext) + " to run Azure Service bus-specific operations in message handler implementations")]
         public static ServiceBusMessageHandlerCollection WithServiceBusFallbackMessageHandler<TMessageHandler>(
             this ServiceBusMessageHandlerCollection handlers,
             Func<IServiceProvider, TMessageHandler> createImplementation)
