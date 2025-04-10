@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
-using GuardNet;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -21,7 +20,7 @@ namespace Arcus.Messaging.Tests.Integration.Health
     public class TcpHealthService
     {
         private const string LocalAddress = "127.0.0.1";
-        
+
         private readonly int _healthTcpPort;
         private readonly ILogger _logger;
 
@@ -33,7 +32,7 @@ namespace Arcus.Messaging.Tests.Integration.Health
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the <paramref name="healthTcpPort"/> is not a valid TCP port number.</exception>
         public TcpHealthService(int healthTcpPort, ILogger logger)
         {
-            Guard.NotLessThan(healthTcpPort, 0, nameof(healthTcpPort), "Requires a TCP health port number that's above zero");
+            ArgumentOutOfRangeException.ThrowIfNegative(healthTcpPort);
             _healthTcpPort = healthTcpPort;
             _logger = logger ?? NullLogger.Instance;
         }
@@ -48,7 +47,7 @@ namespace Arcus.Messaging.Tests.Integration.Health
                 _logger.LogTrace("Connecting to the TCP {Address}:{Port}...", LocalAddress, _healthTcpPort);
                 await client.ConnectAsync(IPAddress.Parse(LocalAddress), _healthTcpPort);
                 _logger.LogTrace("Connected to the TCP {Address}:{Port}", LocalAddress, _healthTcpPort);
-                
+
                 _logger.LogTrace("Retrieving health report...");
                 using (NetworkStream clientStream = client.GetStream())
                 using (var reader = new StreamReader(clientStream))
@@ -60,12 +59,13 @@ namespace Arcus.Messaging.Tests.Integration.Health
                         && json.TryGetValue("status", out JToken status)
                         && json.TryGetValue("totalDuration", out JToken totalDuration))
                     {
-                       HealthReport report = ParseHealthReport(entries, status, totalDuration);
+                        HealthReport report = ParseHealthReport(entries, status, totalDuration);
 
-                       _logger.LogTrace("Health report retrieved");
+                        _logger.LogTrace("Health report retrieved");
                         return report;
                     }
 
+                    _logger.LogError("Could not find necessary camelCase health report properties from: {Json}", json);
                     return null;
                 }
             }
@@ -85,7 +85,7 @@ namespace Arcus.Messaging.Tests.Integration.Health
                 new ReadOnlyDictionary<string, HealthReportEntry>(reportEntries),
                 healthStatus,
                 duration);
-            
+
             return report;
         }
 

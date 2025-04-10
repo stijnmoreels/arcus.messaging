@@ -60,19 +60,19 @@ Once the message handler is created, you can very easily register it:
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 
-public class Startup
+public class Program
 {
     public void ConfigureServices(IServiceCollection services)
     {
         // Add Service Bus Queue message pump and use OrdersMessageHandler to process the messages
-        // - ISecretProvider will be used to lookup the connection string scoped to the queue for secret ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING
-        services.AddServiceBusQueueMessagePump("ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING")
+        services.AddServiceBusQueueMessagePump(
+            "<queue-name>", "<service-bus-fully-qualified-namespace>", new ManagedIdentityCredential(...))
                 .WithServiceBusMessageHandler<OrdersMessageHandler, Order>();
 
         // Add Service Bus Topic message pump and use OrdersMessageHandler to process the messages on the 'My-Subscription-Name' subscription
         // - Topic subscriptions over 50 characters will be truncated
-        // - ISecretProvider will be used to lookup the connection string scoped to the queue for secret ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING
-        services.AddServiceBusTopicMessagePump("My-Subscription-Name", "ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING")
+        services.AddServiceBusTopicMessagePump(
+            "<topic-name>", "<subscription-name>", "<service-bus-fully-qualified-namespace>", new ManagedIdentityCredential(...))
                 .WithServiceBusMessageHandler<OrdersMessageHandler, Order>();
 
         // Note, that only a single call to the `.WithServiceBusMessageHandler` has to be made when the handler should be used across message pumps.
@@ -80,9 +80,7 @@ public class Startup
 }
 ```
 
-In this example, we are using the Azure Service Bus message pump to process a queue and a topic and use the connection string stored in the `ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING` connection string.
-
-> 💡 We support **connection strings that are scoped on the Service Bus namespace and entity** allowing you to choose the required security model for your applications. If you are using namespace-scoped connection strings you'll have to pass your queue/topic name as well.
+> 💡 We also support **connection strings that are scoped on the Service Bus namespace and entity** allowing you to choose the required security model for your applications. If you are using namespace-scoped connection strings you'll have to pass your queue/topic name as well.
 
 > ⚠ The order in which the message handlers are registered matters when a message is processed. If the first one can't handle the message, the second will be checked, and so forth.
 
@@ -113,12 +111,15 @@ We would like that this handler only processed the message when the context cont
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 
-public class Startup
+public class Program
 {
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddServiceBusTopicMessagePump(...)
-                .WithServiceBusMessageHandler<OrderMessageHandler, Order>(context => context.Properties["MessageType"].ToString() == "Order");
+                .WithServiceBusMessageHandler<OrderMessageHandler, Order>(options =>
+                {
+                    options.AddMessageContextFilter(context => context.Properties["MessageType"].ToString() == "Order"));
+                });
     }
 }
 ```
@@ -156,20 +157,22 @@ The registration of these message body serializers can be done just as easily as
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 
-public class Startup
+public class Program
 {
     public void ConfigureServices(IServiceCollection services)
     {
-        // Register the message body serializer in the dependency container where the dependent services will be injected.
         services.AddServiceBusTopicMessagePump(...)
-                .WitServiceBusMessageHandler<OrderBatchMessageHandler>(..., messageBodySerializer: new OrderBatchMessageBodySerializer());
-
-        // Register the message body serializer  in the dependency container where the dependent services are manually injected.
-        services.AddServiceBusTopicMessagePump(...)
-                .WithServiceBusMessageHandler(..., messageBodySerializerImplementationFactory: serviceProvider => 
+                .WitServiceBusMessageHandler<OrderBatchMessageHandler>(options =>
                 {
-                    var logger = serviceProvider.GetService<ILogger<OrderBatchMessageHandler>>();
-                    return new OrderBatchMessageHandler(logger);
+                    // Option #1
+                    options.AddMessageBodySerializer(new OrderBatchMessageBodySerializer());
+
+                    // Option #2
+                    options.AddMessageBodySerializer(serviceProvider => 
+                    {
+                        var logger = serviceProvider.GetService<ILogger<OrderBatchMessageHandler>>();
+                        return new OrderBatchMessageHandler(logger);
+                    });
                 });
     }
 }
@@ -209,12 +212,15 @@ public class OrderMessageHandler : IAzureServiceBusMessageHandler<Order>
 using Microsoft.Extensions.DependencyInjection;
 
 // Message handler registration
-public class Startup
+public class Program
 {
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddServiceBusTopicMessagePump(...)
-                .WithServiceMessageHandler<OrderMessageHandler, Order>((Order order) => order.Type == Department.Sales);
+                .WithServiceMessageHandler<OrderMessageHandler, Order>(options =>
+                {
+                    options.AddMessageBodyFilter((Order order) => order.Type == Department.Sales));
+        });
     }
 }
 ```
@@ -380,46 +386,17 @@ Next to that, we provide a **variety of overloads** to allow you to:
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 
-public class Startup
+public class Program
 {
     public void ConfigureServices(IServiceCollection services)
     {
-        // Specify the name of the Service Bus Queue:
-        services.AddServiceBusQueueMessagePump(
-            "My-Service-Bus-Queue-Name",
-            "ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING");
 
-        // Specify the name of the Service Bus Topic, and provide a name for the Topic subscription:
-        services.AddServiceBusMessageTopicMessagePump<OrdersMessageHandler>(
-            "My-Service-Bus-Topic-Name",
-            "My-Service-Bus-Topic-Subscription-Name",
-            "ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING");
-
-        // Specify a topic subscription prefix instead of a name to separate topic message pumps.
-        services.AddServiceBusTopicMessagePumpWithPrefix(
-            "My-Service-Bus-Topic-Name"
-            "My-Service-Bus-Subscription-Prefix",
-            "ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING");
-
-        // Uses managed identity to authenticate with the Service Bus Topic:
-        services.AddServiceBusTopicMessagePumpUsingManagedIdentity(
-            topicName: properties.EntityPath,
-            subscriptionName: "Receive-All", 
-            fullyQualifiedNamespace: "<your-namespace>.servicebus.windows.net"
-            // The optional client id to authenticate for a user assigned managed identity. More information on user assigned managed identities cam be found here:
-            // https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/overview#how-a-user-assigned-managed-identity-works-with-an-azure-vm
-            clientId: "<your-client-id>");
-
-        services.AddServiceBusTopicMessagePump(
-            "ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING",
+        services.AddServiceBus...MessagePump(..., 
             options => 
             {
                 // Indicate whether or not messages should be automatically marked as completed 
                 // if no exceptions occurred and processing has finished (default: true).
                 options.AutoComplete = true;
-
-                // Indicate whether or not the message pump should emit security events (default: false).
-                options.EmitSecurityEvents = true;
 
                 // The amount of concurrent calls to process messages 
                 // (default: null, leading to the defaults of the Azure Service Bus SDK message handler options).
@@ -434,97 +411,11 @@ public class Startup
                 // The unique identifier for this background job to distinguish 
                 // this job instance in a multi-instance deployment (default: guid).
                 options.JobId = Guid.NewGuid().ToString();
-
-                // The format of the message correlation used when receiving Azure Service Bus messages.
-                // (default: W3C).
-                options.Routing.Correlation.Format = MessageCorrelationFormat.Hierarchical;
-
-                // The name of the operation used when tracking the request telemetry.
-                // (default: Process)
-                options.Routing.Correlation.OperationName = "Order";
-
-                // The name of the Azure Service Bus message property that has the transaction ID.
-                // ⚠ Only used when the correlation format is configured as Hierarchical.
-                // (default: Transaction-Id).
-                options.Routing.Correlation.TransactionIdPropertyName = "X-Transaction-ID";
-
-                // The name of the Azure Service Bus message property that has the upstream service ID.
-                // ⚠ Only used when the correlation format is configured as Hierarchical.
-                // (default: Operation-Parent-Id).
-                options.Routing.Correlation.OperationParentIdPropertyName = "X-Operation-Parent-ID";
-
-                // The property name to enrich the log event with the correlation information cycle ID.
-                // (default: CycleId)
-                options.Routing.CorrelationEnricher.CycleIdPropertyName = "X-CycleId";
 
                 // Indicate whether or not the default built-in JSON deserialization should ignore additional members 
                 // when deserializing the incoming message (default: AdditionalMemberHandling.Error).
                 options.Routing.Deserialization.AdditionalMembers = AdditionalMemberHandling.Ignore;
-
-                // Indicate whether or not a new Azure Service Bus Topic subscription should be created/deleted
-                // when the message pump starts/stops (default: None, so no subscription will be created or deleted).
-                options.TopicSubscription = TopicSubscription.Automatic;
             });
-
-        services.AddServiceBusQueueMessagePump(
-            "ARCUS_SERVICEBUS_ORDERS_CONNECTIONSTRING",
-            options => 
-            {
-                // Indicate whether or not messages should be automatically marked as completed 
-                // if no exceptions occurred and processing has finished (default: true).
-                options.AutoComplete = true;
-
-                // Indicate whether or not the message pump should emit security events (default: false).
-                options.EmitSecurityEvents = true;
-
-                // The amount of concurrent calls to process messages 
-                // (default: null, leading to the defaults of the Azure Service Bus SDK message handler options).
-                options.MaxConcurrentCalls = 5;
-
-                // Specifies the amount of messages that will be eagerly requested during processing.
-                // Setting the PrefetchCount to a value higher then the MaxConcurrentCalls value helps maximizing 
-                // throughput by allowing the message pump to receive from a local cache rather then waiting on a 
-                // service request.
-                options.PrefetchCount = 10;
-
-                // The unique identifier for this background job to distinguish 
-                // this job instance in a multi-instance deployment (default: guid).
-                options.JobId = Guid.NewGuid().ToString();
-
-                // The format of the message correlation used when receiving Azure Service Bus messages.
-                // (default: W3C).
-                options.Routing.Correlation.Format = MessageCorrelationFormat.Hierarchical;
-
-                // The name of the operation used when tracking the request telemetry.
-                // (default: Process)
-                options.Routing.Correlation.OperationName = "Order";
-
-                // The name of the Azure Service Bus message property that has the transaction ID.
-                // ⚠ Only used when the correlation format is configured as Hierarchical.
-                // (default: Transaction-Id).
-                options.Routing.Correlation.TransactionIdPropertyName = "X-Transaction-ID";
-
-                // The name of the Azure Service Bus message property that has the upstream service ID.
-                // ⚠ Only used when the correlation format is configured as Hierarchical.
-                // (default: Operation-Parent-Id).
-                options.Routing.Correlation.OperationParentIdPropertyName = "X-Operation-Parent-ID";
-
-                // The property name to enrich the log event with the correlation information cycle ID.
-                // (default: CycleId)
-                options.Routing.CorrelationEnricher.CycleIdPropertyName = "X-CycleId";
-
-                // Indicate whether or not the default built-in JSON deserialization should ignore additional members 
-                // when deserializing the incoming message (default: AdditionalMemberHandling.Error).
-                options.Routing.Deserialization.AdditionalMembers = AdditionalMembersHandling.Ignore;
-            });
-
-        // Uses managed identity to authenticate with the Service Bus Topic:
-        services.AddServiceBusQueueMessagePumpUsingManagedIdentity(
-            queueName: "orders",
-            serviceBusNamespace: "<your-namespace>"
-            // The optional client id to authenticate for a user assigned managed identity. More information on user assigned managed identities cam be found here:
-            // https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/overview#how-a-user-assigned-managed-identity-works-with-an-azure-vm
-            clientId: "<your-client-id>");
 
         // Multiple message handlers can be added to the services, based on the message type (ex. 'Order', 'Customer'...), 
         // the correct message handler will be selected.

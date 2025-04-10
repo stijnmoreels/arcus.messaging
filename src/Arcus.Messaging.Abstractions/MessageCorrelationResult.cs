@@ -1,5 +1,6 @@
 ﻿using System;
 using Arcus.Messaging.Abstractions.MessageHandling;
+using Arcus.Messaging.Abstractions.Telemetry;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
@@ -10,6 +11,7 @@ namespace Arcus.Messaging.Abstractions
     /// Represents the correlation result of a received Azure Service Bus message.
     /// This result will act as the scope of the request telemetry.
     /// </summary>
+    [Obsolete("Will be removed in v3.0 in favor of " + nameof(MessageOperationResult))]
     public sealed class MessageCorrelationResult : IDisposable
     {
         private readonly TelemetryClient _telemetryClient;
@@ -40,6 +42,7 @@ namespace Arcus.Messaging.Abstractions
         /// </summary>
         /// <param name="correlationInfo">The correlation information based on custom application properties.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="correlationInfo"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0 as the Hierarchical correlation format is deprecated")]
         public static MessageCorrelationResult Create(MessageCorrelationInfo correlationInfo)
         {
             return new MessageCorrelationResult(correlationInfo ?? throw new ArgumentNullException(nameof(correlationInfo)));
@@ -52,9 +55,10 @@ namespace Arcus.Messaging.Abstractions
         /// <param name="transactionId">The cross-operation transaction ID of the message correlation.</param>
         /// <param name="operationParentId">The parent ID of the message correlation.</param>
         /// <exception cref="ArgumentException">Thrown when the <paramref name="transactionId"/> or the <paramref name="operationParentId"/> is blank.</exception>
+        [Obsolete("Will be moved in v3.0 outside the 'Abstractions' library in a separate Telemetry-specific library, see the v3.0 migration guide for more information")]
         public static MessageCorrelationResult Create(
             TelemetryClient client,
-            string transactionId, 
+            string transactionId,
             string operationParentId)
         {
             if (string.IsNullOrWhiteSpace(transactionId))

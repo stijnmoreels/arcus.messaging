@@ -6,6 +6,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
     /// <summary>
     /// Represents a sub-set of consumer-configurable options available for Azure Service Bus Topic message pumps.
     /// </summary>
+    [Obsolete("Will be removed in v3.0 in favor of using the " + nameof(AzureServiceBusMessagePumpOptions) + " directly as there is no difference anymore between queue and topic options")]
     public interface IAzureServiceBusTopicMessagePumpOptions
     {
         /// <summary>
@@ -15,8 +16,9 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// <remarks>
         ///     Provides capability to create and delete these subscriptions. This requires 'Manage' permissions on the Azure Service Bus Topic or namespace.
         /// </remarks>
+        [Obsolete("Will be removed in v3.0 as automatic Azure Service bus topic subscription creation and deletion will not be supported anymore")]
         TopicSubscription? TopicSubscription { get; set; }
-        
+
         /// <summary>
         /// Gets or sets the maximum concurrent calls to process messages.
         /// </summary>
@@ -39,8 +41,9 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// <summary>
         /// Gets or sets the flag to indicate whether or not to emit security events during the lifetime of the message pump.
         /// </summary>
+        [Obsolete("Will be removed in v3.0 as the direct link to Arcus.Observability will be removed as well")]
         bool EmitSecurityEvents { get; set; }
-        
+
         /// <summary>
         /// Gets or sets the unique identifier for this background job to distinguish this job instance in a multi-instance deployment.
         /// </summary>
@@ -51,6 +54,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus.Configuration
         /// Gets or sets the timeout when the message pump tries to restart and re-authenticate during key rotation.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the <paramref name="value"/> is less than <see cref="TimeSpan.Zero"/>.</exception>
+        [Obsolete("Will be removed in v3.0 as the key rotation functionality will be removed as well")]
         TimeSpan KeyRotationTimeout { get; set; }
 
         /// <summary>

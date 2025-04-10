@@ -16,6 +16,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+#pragma warning disable CS0618 // Type or member is obsolete: lots of deprecated functionality will be removed in v3.0.
+
 namespace Arcus.Messaging.Pumps.ServiceBus
 {
     /// <summary>
@@ -40,6 +42,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         /// <param name="messageRouter">The router to route incoming Azure Service Bus messages through registered <see cref="IAzureServiceBusMessageHandler{TMessage}"/>s.</param>
         /// <param name="logger">Logger to write telemetry to</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="settings"/>, <paramref name="settings"/>, <paramref name="serviceProvider"/>, <paramref name="messageRouter"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0 as the application configuration is not needed anymore by the message pump")]
         public AzureServiceBusMessagePump(
             AzureServiceBusMessagePumpSettings settings,
             IConfiguration applicationConfiguration,
@@ -57,9 +60,38 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         }
 
         /// <summary>
+        /// Initializes a new instance of the <see cref="AzureServiceBusMessagePump"/> class.
+        /// </summary>
+        /// <param name="settings">Settings to configure the message pump</param>
+        /// <param name="serviceProvider">Collection of services that are configured</param>
+        /// <param name="messageRouter">The router to route incoming Azure Service Bus messages through registered <see cref="IAzureServiceBusMessageHandler{TMessage}"/>s.</param>
+        /// <param name="logger">Logger to write telemetry to</param>
+        /// <exception cref="ArgumentNullException">Thrown when the <paramref name="settings"/>, <paramref name="settings"/>, <paramref name="serviceProvider"/>, <paramref name="messageRouter"/> is <c>null</c>.</exception>
+        public AzureServiceBusMessagePump(
+            AzureServiceBusMessagePumpSettings settings,
+            IServiceProvider serviceProvider,
+            IAzureServiceBusMessageRouter messageRouter,
+            ILogger<AzureServiceBusMessagePump> logger)
+            : base(serviceProvider, logger)
+        {
+            Settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            JobId = Settings.Options.JobId;
+            SubscriptionName = Settings.SubscriptionName;
+
+            _messageRouter = messageRouter ?? throw new ArgumentNullException(nameof(messageRouter));
+            _loggingScope = logger?.BeginScope("Job: {JobId}", JobId);
+        }
+
+        /// <summary>
         ///     Gets the settings configuring the message pump.
         /// </summary>
+        [Obsolete("Will be made internal in v3.0, use the " + nameof(Options) + " instead")]
         public AzureServiceBusMessagePumpSettings Settings { get; }
+
+        /// <summary>
+        /// Gets the user-configurable options of the message pump.
+        /// </summary>
+        public AzureServiceBusMessagePumpOptions Options => Settings.Options;
 
         /// <summary>
         ///     Service Bus namespace that contains the entity
@@ -76,6 +108,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         /// </summary>
         /// <param name="reconfigure">The function to reconfigure the Azure Service Bus options.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="reconfigure"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0")]
         public void ReconfigureOptions(Action<AzureServiceBusMessagePumpOptions> reconfigure)
         {
             if (reconfigure is null)
@@ -92,6 +125,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         /// <param name="reconfigure">The function to reconfigure the Azure Service Bus Queue options.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="reconfigure"/> is <c>null</c>.</exception>
         /// <exception cref="NotSupportedException">Thrown when the message pump is not configured for Queues.</exception>
+        [Obsolete("Will be removed in v3.0")]
         public void ReconfigureQueueOptions(Action<IAzureServiceBusQueueMessagePumpOptions> reconfigure)
         {
             if (reconfigure is null)
@@ -114,6 +148,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         /// <param name="reconfigure">The function to reconfigure the Azure Service Bus Topic options.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="reconfigure"/> is <c>null</c>.</exception>
         /// <exception cref="NotSupportedException">Thrown when the message pump is not configured for Topics.</exception>
+        [Obsolete("Will be removed in v3.0")]
         public void ReconfigureTopicOptions(Action<IAzureServiceBusTopicMessagePumpOptions> reconfigure)
         {
             if (reconfigure is null)
@@ -149,7 +184,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         private async Task<bool> CreateTopicSubscriptionAsync(CancellationToken cancellationToken)
         {
             ServiceBusAdministrationClient serviceBusClient = await Settings.GetServiceBusAdminClientAsync();
-            string entityPath = await Settings.GetEntityPathAsync();
+            string entityPath = Settings.EntityName;
 
             try
             {
@@ -195,6 +230,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
             }
             catch (Exception exception) when (exception is TaskCanceledException || exception is OperationCanceledException)
             {
+#pragma warning disable CS0618 // Type or member is obsolete: the entity type will be moved down to this message pump in v3.0.
                 Logger.LogDebug("Azure Service Bus {EntityType} message pump '{JobId}' on entity path '{EntityPath}' in namespace '{Namespace}' was cancelled", Settings.ServiceBusEntity, JobId, EntityPath, Namespace);
             }
             catch (Exception exception)
@@ -408,7 +444,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
         private async Task DeleteTopicSubscriptionAsync(CancellationToken cancellationToken)
         {
             ServiceBusAdministrationClient serviceBusClient = await Settings.GetServiceBusAdminClientAsync();
-            string entityPath = await Settings.GetEntityPathAsync();
+            string entityPath = Settings.EntityName;
 
             try
             {
@@ -452,7 +488,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
             }
 
             using MessageCorrelationResult correlationResult = DetermineMessageCorrelation(message);
-            AzureServiceBusMessageContext messageContext = message.GetMessageContext(JobId, Settings.ServiceBusEntity);
+            var messageContext = AzureServiceBusMessageContext.Create(JobId, Settings.ServiceBusEntity, _messageReceiver, message);
 
             MessageProcessingResult routingResult = await _messageRouter.RouteMessageAsync(_messageReceiver, message, messageContext, correlationResult.CorrelationInfo, cancellationToken);
 
@@ -469,6 +505,7 @@ namespace Arcus.Messaging.Pumps.ServiceBus
                     && exception.Message.Contains("already")
                     && exception.Message.Contains("removed"))
                 {
+#pragma warning disable CS0618 // Typ or member is obsolete: entity type will be moved to this message pump in v3.0.
                     Logger.LogTrace("Message '{MessageId}' on Azure Service Bus {EntityType} message pump '{JobId}' does not need to be auto-completed, because it was already settled", message.MessageId, Settings.ServiceBusEntity, JobId);
                 }
             }
@@ -482,15 +519,21 @@ namespace Arcus.Messaging.Pumps.ServiceBus
             {
                 (string transactionId, string operationParentId) = message.ApplicationProperties.GetTraceParent();
                 var client = ServiceProvider.GetRequiredService<TelemetryClient>();
+
+#pragma warning disable CS0618 // Type or member is obsolete: will be moved to a Telemetry-specific library in v3.0
                 return MessageCorrelationResult.Create(client, transactionId, operationParentId);
+#pragma warning restore
             }
 
             MessageCorrelationInfo correlationInfo =
+#pragma warning disable CS0618 // Type or member is obsolete: will be removed in v3.0, once the 'Hierarchical' correlation format is removed.
                 message.GetCorrelationInfo(
                     Settings.Options.Routing.Correlation?.TransactionIdPropertyName ?? PropertyNames.TransactionId,
                     Settings.Options.Routing.Correlation?.OperationParentIdPropertyName ?? PropertyNames.OperationParentId);
 
             return MessageCorrelationResult.Create(correlationInfo);
+#pragma warning restore CS0618 // Type or member is obsolete
+
         }
 
         private static async Task UntilCancelledAsync(CancellationToken cancellationToken)

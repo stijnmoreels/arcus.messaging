@@ -29,8 +29,9 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         /// <param name="logger">The logger instance to write diagnostic trace messages during the routing of the message.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="serviceProvider"/> is <c>null</c>.</exception>
         public AzureServiceBusMessageRouter(IServiceProvider serviceProvider, AzureServiceBusMessageRouterOptions options, ILogger<AzureServiceBusMessageRouter> logger)
-            : this(serviceProvider, options, (ILogger) logger)
+            : base(serviceProvider, options, (ILogger) logger)
         {
+            ServiceBusOptions = options;
         }
 
         /// <summary>
@@ -39,6 +40,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         /// <param name="serviceProvider">The service provider instance to retrieve all the <see cref="IAzureServiceBusMessageHandler{TMessage}"/> instances.</param>
         /// <param name="options">The consumer-configurable options to change the behavior of the router.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="serviceProvider"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0 for simplified message router initialization")]
         public AzureServiceBusMessageRouter(IServiceProvider serviceProvider, AzureServiceBusMessageRouterOptions options)
             : this(serviceProvider, options, NullLogger.Instance)
         {
@@ -50,6 +52,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         /// <param name="serviceProvider">The service provider instance to retrieve all the <see cref="IAzureServiceBusMessageHandler{TMessage}"/> instances.</param>
         /// <param name="logger">The logger instance to write diagnostic trace messages during the routing of the message.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="serviceProvider"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0 for simplified message router initialization")]
         public AzureServiceBusMessageRouter(IServiceProvider serviceProvider, ILogger<AzureServiceBusMessageRouter> logger)
             : this(serviceProvider, new AzureServiceBusMessageRouterOptions(), (ILogger) logger)
         {
@@ -60,6 +63,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         /// </summary>
         /// <param name="serviceProvider">The service provider instance to retrieve all the <see cref="IAzureServiceBusMessageHandler{TMessage}"/> instances.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="serviceProvider"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0 for simplified message router initialization")]
         public AzureServiceBusMessageRouter(IServiceProvider serviceProvider)
             : this(serviceProvider, new AzureServiceBusMessageRouterOptions(), NullLogger.Instance)
         {
@@ -71,6 +75,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         /// <param name="serviceProvider">The service provider instance to retrieve all the <see cref="IAzureServiceBusMessageHandler{TMessage}"/> instances.</param>
         /// <param name="logger">The logger instance to write diagnostic trace messages during the routing of the message.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="serviceProvider"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0 for simplified message router initialization")]
         protected AzureServiceBusMessageRouter(IServiceProvider serviceProvider, ILogger logger)
             : this(serviceProvider, new AzureServiceBusMessageRouterOptions(), logger)
         {
@@ -83,6 +88,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         /// <param name="options">The consumer-configurable options to change the behavior of the router.</param>
         /// <param name="logger">The logger instance to write diagnostic trace messages during the routing of the message.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="serviceProvider"/> is <c>null</c>.</exception>
+        [Obsolete("Will be removed in v3.0 for simplified message router initialization")]
         protected AzureServiceBusMessageRouter(IServiceProvider serviceProvider, AzureServiceBusMessageRouterOptions options, ILogger logger)
             : base(serviceProvider, options, logger ?? NullLogger<AzureServiceBusMessageRouter>.Instance)
         {
@@ -106,6 +112,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         ///     Thrown when the <paramref name="message"/>, <paramref name="messageContext"/>, or <paramref name="correlationInfo"/> is <c>null</c>.
         /// </exception>
         /// <exception cref="InvalidOperationException">Thrown when no message handlers or none matching message handlers are found to process the message.</exception>
+        [Obsolete("Will be removed in v3.0 as only concrete implementations of message routing will be supported from now on")]
         public override async Task RouteMessageAsync<TMessageContext>(
             string message,
             TMessageContext messageContext,
@@ -135,7 +142,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
 
         /// <summary>
         /// Handle a new <paramref name="message"/> that was received by routing them through registered <see cref="IAzureServiceBusMessageHandler{TMessage}"/>s
-        /// and optionally through an registered <see cref="IFallbackMessageHandler"/> or <see cref="IAzureServiceBusFallbackMessageHandler"/>
+        /// and optionally through <see cref="IAzureServiceBusFallbackMessageHandler"/>
         /// if none of the message handlers were able to process the <paramref name="message"/>.
         /// </summary>
         /// <param name="message">The incoming message that needs to be routed through registered message handlers.</param>
@@ -151,6 +158,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
         ///     Thrown when the <paramref name="message"/>, <paramref name="messageContext"/>, or <paramref name="correlationInfo"/> is <c>null</c>.
         /// </exception>
         /// <exception cref="InvalidOperationException">Thrown when no message handlers or none matching message handlers are found to process the message.</exception>
+        [Obsolete("Will be removed in v3.0 as the message pump will be the sole point of contact for message processing instead of this overload that was used in message pump-free scenarios like Azure Functions, use the other overload instead with the " + nameof(ServiceBusReceiver))]
         public async Task<MessageProcessingResult> RouteMessageAsync(
             ServiceBusReceivedMessage message,
             AzureServiceBusMessageContext messageContext,
@@ -167,7 +175,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
 
         /// <summary>
         /// Handle a new <paramref name="message"/> that was received by routing them through registered <see cref="IAzureServiceBusMessageHandler{TMessage}"/>s
-        /// and optionally through a registered <see cref="IFallbackMessageHandler"/> or <see cref="IAzureServiceBusFallbackMessageHandler"/>
+        /// and optionally through a <see cref="IAzureServiceBusFallbackMessageHandler"/>
         /// if none of the message handlers were able to process the <paramref name="message"/>.
         /// </summary>
         /// <param name="messageReceiver">
@@ -194,7 +202,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
 
         /// <summary>
         /// Handle a new <paramref name="message"/> that was received by routing them through registered <see cref="IAzureServiceBusMessageHandler{TMessage}"/>s
-        /// and optionally through a registered <see cref="IFallbackMessageHandler"/> or <see cref="IAzureServiceBusFallbackMessageHandler"/>
+        /// and optionally through a registered <see cref="IAzureServiceBusFallbackMessageHandler"/>
         /// if none of the message handlers were able to process the <paramref name="message"/>.
         /// </summary>
         /// <param name="messageReceiver">
@@ -236,21 +244,29 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
 
             using DurationMeasurement measurement = DurationMeasurement.Start();
             using IServiceScope serviceScope = ServiceProvider.CreateScope();
+#pragma warning disable CS0618 // Type or member is obsolete: will be refactored when moving towards v3.0.
             using IDisposable _ = LogContext.Push(new MessageCorrelationInfoEnricher(correlationInfo, Options.CorrelationEnricher));
+#pragma warning restore CS0618 // Type or member is obsolete
 
             try
             {
+#pragma warning disable CS0618 // Type or member is obsolete: will be refactored when moving towards v3.0.
                 var accessor = serviceScope.ServiceProvider.GetService<IMessageCorrelationInfoAccessor>();
+#pragma warning restore CS0618 // Type or member is obsolete
                 accessor?.SetCorrelationInfo(correlationInfo);
 
                 MessageProcessingResult routingResult = await TryRouteMessageWithPotentialFallbackAsync(serviceScope.ServiceProvider, messageReceiver, message, messageContext, correlationInfo, cancellationToken);
 
+#pragma warning disable CS0618 // Type or member is obsolete: specific telemetry calls will be removed in v3.0.
                 Logger.LogServiceBusRequest(serviceBusNamespace, entityName, Options.Telemetry.OperationName, routingResult.IsSuccessful, measurement, messageContext.EntityType);
+#pragma warning restore CS0618 // Type or member is obsolete
                 return routingResult;
             }
             catch
             {
+#pragma warning disable CS0618 // Type or member is obsolete: specific telemery calls will be removed in v3.0.
                 Logger.LogServiceBusRequest(serviceBusNamespace, entityName, Options.Telemetry.OperationName, false, measurement, messageContext.EntityType);
+#pragma warning restore CS0618 // Type or member is obsolete
                 throw;
             }
         }
@@ -272,8 +288,7 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
                     return MessageProcessingResult.Failure(message.MessageId, CannotFindMatchedHandler, "Failed to process message in the message pump as no message handler is registered in the dependency container");
                 }
 
-                Encoding encoding = messageContext.GetMessageEncodingProperty(Logger);
-                string messageBody = encoding.GetString(message.Body.ToArray());
+                string messageBody = LoadMessageBody(message, messageContext);
                 bool hasGoneThroughMessageHandler = false;
 
                 foreach (MessageHandler messageHandler in messageHandlers)
@@ -314,7 +329,9 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
                     return MessageProcessingResult.Failure(message.MessageId, CannotFindMatchedHandler, "Failed to process message in pump as no message handler was matched against the message and no fallback message handlers were configured");
                 }
 
+#pragma warning disable CS0618 // Type or member is obsolete: general message routing will be removed in v3.0.
                 bool isProcessedByGeneralFallback = await TryFallbackProcessMessageAsync(messageBody, messageContext, correlationInfo, cancellationToken);
+#pragma warning restore CS0618 // Type or member is obsolete
                 if (isProcessedByGeneralFallback)
                 {
                     return MessageProcessingResult.Success(message.MessageId);
@@ -332,6 +349,32 @@ namespace Arcus.Messaging.Abstractions.ServiceBus.MessageHandling
                 }
 
                 return MessageProcessingResult.Failure(message.MessageId, ProcessingInterrupted, "Failed to process message in pump as there was an unexpected critical problem during processing, please see the logs for more information", exception);
+            }
+        }
+
+        private static string LoadMessageBody(ServiceBusReceivedMessage message, AzureServiceBusMessageContext context)
+        {
+            Encoding encoding = DetermineEncoding();
+            string messageBody = encoding.GetString(message.Body.ToArray());
+
+            return messageBody;
+
+            Encoding DetermineEncoding()
+            {
+                Encoding fallbackEncoding = Encoding.UTF8;
+
+                if (context.Properties.TryGetValue(PropertyNames.Encoding, out object encodingNameObj)
+                    && encodingNameObj is string encodingName
+                    && !string.IsNullOrWhiteSpace(encodingName))
+                {
+                    EncodingInfo foundEncoding =
+                        Encoding.GetEncodings()
+                                .FirstOrDefault(e => e.Name.Equals(encodingName, StringComparison.OrdinalIgnoreCase));
+
+                    return foundEncoding?.GetEncoding() ?? fallbackEncoding;
+                }
+
+                return fallbackEncoding;
             }
         }
 
