@@ -213,7 +213,7 @@ namespace Arcus.Messaging.Tests.Unit.MessageHandling.ServiceBus
             var expectedMessage = new TestMessage { TestProperty = "Some value" };
             string expectedBody = JsonConvert.SerializeObject(expectedMessage);
             var serializer = new TestMessageBodySerializer(expectedBody, OrderGenerator.Generate());
-            collection.WithServiceBusMessageHandler<StubServiceBusMessageHandler<Order>, Order>(implementationFactory: _ => spyHandler, options => options.UseMessageBodySerializer(serializer))
+            collection.WithServiceBusMessageHandler<StubServiceBusMessageHandler<Order>, Order>(implementationFactory: _ => spyHandler, options => options.UseMessageBodyDeserializer(serializer))
                       .WithServiceBusMessageHandler<StubServiceBusMessageHandler<TestMessage>, TestMessage>(implementationFactory: _ => ignoredHandler);
 
             AzureServiceBusMessageRouter router = CreateMessageRouter(collection);
@@ -242,7 +242,7 @@ namespace Arcus.Messaging.Tests.Unit.MessageHandling.ServiceBus
             var expectedMessage = new TestMessage { TestProperty = "Some value" };
             string expectedBody = JsonConvert.SerializeObject(expectedMessage);
             var serializer = new TestMessageBodySerializer(expectedBody, new SubOrder());
-            collection.WithServiceBusMessageHandler<StubServiceBusMessageHandler<Order>, Order>(implementationFactory: _ => spyHandler, options => options.UseMessageBodySerializer(serializer))
+            collection.WithServiceBusMessageHandler<StubServiceBusMessageHandler<Order>, Order>(implementationFactory: _ => spyHandler, options => options.UseMessageBodyDeserializer(serializer))
                       .WithServiceBusMessageHandler<StubServiceBusMessageHandler<TestMessage>, TestMessage>(implementationFactory: _ => ignoredHandler);
 
             AzureServiceBusMessageRouter router = CreateMessageRouter(collection);
@@ -280,13 +280,13 @@ namespace Arcus.Messaging.Tests.Unit.MessageHandling.ServiceBus
                           implementationFactory: _ => ignoredHandler3,
                           options => options.AddMessageContextFilter(ctx => ctx != null)
                                             .AddMessageBodyFilter(body => body != null)
-                                            .UseMessageBodySerializer(new TestMessageBodySerializer(expectedBody, new Customer())))
+                                            .UseMessageBodyDeserializer(new TestMessageBodySerializer(expectedBody, new Customer())))
                       .WithServiceBusMessageHandler<StubServiceBusMessageHandler<TestMessage>, TestMessage>(
                           implementationFactory: _ => ignoredHandler2,
                           opt => opt.AddMessageBodyFilter(body => body is null))
                       .WithServiceBusMessageHandler<StubServiceBusMessageHandler<Order>, Order>(
                           implementationFactory: _ => spyHandler,
-                          options => options.UseMessageBodySerializer(serializer)
+                          options => options.UseMessageBodyDeserializer(serializer)
                                             .AddMessageBodyFilter(body => body.Customer != null)
                                             .AddMessageContextFilter(ctx => ctx.MessageId.StartsWith("message-id")))
                       .WithServiceBusMessageHandler<StubServiceBusMessageHandler<TestMessage>, TestMessage>()

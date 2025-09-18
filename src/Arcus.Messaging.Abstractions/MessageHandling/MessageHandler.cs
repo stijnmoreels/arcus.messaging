@@ -18,7 +18,7 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
     {
         private readonly object _messageHandlerInstance;
         private readonly ProcessMessageAsync _messageHandlerImplementation;
-        private readonly IMessageBodySerializer _messageBodySerializer;
+        private readonly Func<BinaryData, MessageContext, MessageHandlerSummary, Task<MessageBodyResult>> _customDeserializeMessageBodyAsync;
         private readonly Func<MessageContext, MessageHandlerSummary, bool> _messageContextFilter;
         private readonly Func<object, MessageHandlerSummary, bool> _messageBodyFilter;
         private readonly ILogger _logger;
@@ -30,7 +30,7 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
             Type messageContextType,
             Func<MessageContext, MessageHandlerSummary, bool> messageContextFilter,
             Func<object, MessageHandlerSummary, bool> messageBodyFilter,
-            IMessageBodySerializer messageBodySerializer,
+            Func<BinaryData, MessageContext, MessageHandlerSummary, Task<MessageBodyResult>> customDeserializeMessageBodyAsync,
             ILogger logger)
         {
             ArgumentNullException.ThrowIfNull(messageHandlerInstance);
@@ -44,7 +44,7 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
             _messageHandlerImplementation = messageHandlerImplementation;
             _messageContextFilter = messageContextFilter;
             _messageBodyFilter = messageBodyFilter;
-            _messageBodySerializer = messageBodySerializer;
+            _customDeserializeMessageBodyAsync = customDeserializeMessageBodyAsync;
             _logger = logger ?? NullLogger.Instance;
 
             MessageType = messageType;
@@ -97,6 +97,7 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
         /// <param name="logger">The logger instance to write diagnostic messages during the message handler interaction.</param>
         /// <exception cref="ArgumentNullException">Thrown when the <paramref name="messageHandler"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentException">Thrown when the <paramref name="jobId"/> is blank.</exception>
+        [Obsolete("Will be removed in v4.0, please use other " + nameof(Create) + " overload")]
         public static MessageHandler Create<TMessage, TMessageContext>(
             IMessageHandler<TMessage, TMessageContext> messageHandler,
             ILogger logger,
@@ -104,6 +105,32 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
             Func<TMessage, bool> messageBodyFilter = null,
             Func<TMessageContext, bool> messageContextFilter = null,
             IMessageBodySerializer messageBodySerializer = null)
+            where TMessageContext : MessageContext
+        {
+            var deserializer = messageBodySerializer is null ? null : new DeprecatedMessageBodySerializerAdapter<TMessageContext>(messageBodySerializer);
+            return Create(messageHandler, logger, jobId, messageBodyFilter, messageContextFilter, deserializer);
+        }
+
+        /// <summary>
+        /// Creates a general <see cref="MessageHandler"/> instance from the <paramref name="messageHandler"/> instance.
+        /// </summary>
+        /// <typeparam name="TMessage">The type of message the <paramref name="messageHandler"/> processes.</typeparam>
+        /// <typeparam name="TMessageContext">The type of context the <paramref name="messageHandler"/> processes.</typeparam>
+        /// <param name="messageHandler">The user-defined message handler instance.</param>
+        /// <param name="jobId">The job ID to link this message handler to a registered message pump.</param>
+        /// <param name="messageBodyFilter">The optional function to filter on the message body before processing.</param>
+        /// <param name="messageContextFilter">The optional function to filter on the message context before processing.</param>
+        /// <param name="messageBodySerializer">The optional message body serializer instance to customize how the message should be deserialized.</param>
+        /// <param name="logger">The logger instance to write diagnostic messages during the message handler interaction.</param>
+        /// <exception cref="ArgumentNullException">Thrown when the <paramref name="messageHandler"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException">Thrown when the <paramref name="jobId"/> is blank.</exception>
+        public static MessageHandler Create<TMessage, TMessageContext>(
+            IMessageHandler<TMessage, TMessageContext> messageHandler,
+            ILogger logger,
+            string jobId,
+            Func<TMessage, bool> messageBodyFilter,
+            Func<TMessageContext, bool> messageContextFilter,
+            IMessageBodyDeserializer<TMessageContext> messageBodySerializer)
             where TMessageContext : MessageContext
         {
             ArgumentNullException.ThrowIfNull(messageHandler);
@@ -118,8 +145,34 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
                 messageContextType: typeof(TMessageContext),
                 messageContextFilter: DetermineMessageContextFilter(messageContextFilter, jobId),
                 messageBodyFilter: DetermineMessageBodyFilter(messageBodyFilter),
-                messageBodySerializer: messageBodySerializer,
+                customDeserializeMessageBodyAsync: DetermineMessageBodyDeserialization<TMessage, TMessageContext>(messageBodySerializer),
                 logger: logger);
+        }
+
+        [Obsolete("Will be removed in v4.0")]
+        private sealed class DeprecatedMessageBodySerializerAdapter<TMessageContext> : IMessageBodyDeserializer<TMessageContext> where TMessageContext : MessageContext
+        {
+            private readonly IMessageBodySerializer _deprecated;
+
+            internal DeprecatedMessageBodySerializerAdapter(IMessageBodySerializer deprecated)
+            {
+                _deprecated = deprecated;
+            }
+
+            public async Task<MessageBodyResult> DeserializeMessageAsync(BinaryData messageBody, TMessageContext messageContext)
+            {
+                string messageBodyTxt = messageBody.IsEmpty ? string.Empty : messageContext.GetEncodingOrDefault().GetString(messageBody);
+                MessageResult result = await _deprecated.DeserializeMessageAsync(messageBodyTxt);
+
+                if (result.IsSuccess)
+                {
+                    return MessageBodyResult.Success(result.DeserializedMessage);
+                }
+
+                return result.Exception is null
+                    ? MessageBodyResult.Failure(result.ErrorMessage)
+                    : MessageBodyResult.Failure(result.Exception);
+            }
         }
 
         private static ProcessMessageAsync DetermineMessageImplementation<TMessage, TMessageContext>(IMessageHandler<TMessage, TMessageContext> messageHandler)
@@ -207,6 +260,56 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
             };
         }
 
+        private static Func<BinaryData, MessageContext, MessageHandlerSummary, Task<MessageBodyResult>> DetermineMessageBodyDeserialization<TMessage, TMessageContext>(
+            IMessageBodyDeserializer<TMessageContext> messageBodyDeserializer)
+            where TMessageContext : MessageContext
+        {
+            return async (rawBody, rawContext, summary) =>
+            {
+                ArgumentNullException.ThrowIfNull(rawBody);
+
+                if (messageBodyDeserializer is null)
+                {
+                    return MessageBodyResult.Failure("n/a");
+                }
+
+                var messageContext = rawContext as TMessageContext;
+                Type deserializerType = messageBodyDeserializer.GetType();
+
+                Task<MessageBodyResult> deserializeAsync = messageBodyDeserializer.DeserializeMessageAsync(rawBody, messageContext);
+                if (deserializeAsync is null)
+                {
+                    summary.AddFailed("custom body parsing failed", ("using type", deserializerType.Name), "returns 'null'");
+                    return MessageBodyResult.Failure("n/a");
+                }
+
+                MessageBodyResult result = await deserializeAsync;
+                if (result is null)
+                {
+                    summary.AddFailed("custom body parsing failed", ("using type", deserializerType.Name), "returns 'null'");
+                    return MessageBodyResult.Failure("n/a");
+                }
+
+                if (result.IsSuccess)
+                {
+                    Type expectedMessageType = typeof(TMessage);
+                    Type deserializedMessageType = result.DeserializedMessage.GetType();
+
+                    if (deserializedMessageType == expectedMessageType || deserializedMessageType.IsSubclassOf(expectedMessageType))
+                    {
+                        summary.AddPassed("custom body parsing passed", ("using type", deserializerType.Name));
+                        return result;
+                    }
+
+                    summary.AddFailed("custom body parsing failed", ("using type", deserializedMessageType.Name), ("requires type", expectedMessageType.Name), ("but got type", deserializedMessageType.Name));
+                    return MessageBodyResult.Failure("n/a");
+                }
+
+                summary.AddFailed(result.Exception, "custom body parsing failed", result.ErrorMessage);
+                return MessageBodyResult.Failure("n/a");
+            };
+        }
+
         /// <summary>
         /// Gets the concrete class type of the <see cref="IMessageHandler{TMessage,TMessageContext}"/> instance.
         /// </summary>
@@ -276,44 +379,13 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
             return MatchesMessageBody(message, new MessageHandlerSummary());
         }
 
-        internal async Task<MessageResult> TryCustomDeserializeMessageAsync(string message, MessageHandlerSummary summary)
+        internal Task<MessageBodyResult> TryCustomDeserializeMessageAsync<TMessageContext>(
+            BinaryData messageBody,
+            TMessageContext messageContext,
+            MessageHandlerSummary summary)
+            where TMessageContext : MessageContext
         {
-            if (_messageBodySerializer is null)
-            {
-                return MessageResult.Failure("n/a");
-            }
-
-            Task<MessageResult> deserializeMessageAsync = _messageBodySerializer.DeserializeMessageAsync(message);
-            Type serializerType = _messageBodySerializer.GetType();
-
-            if (deserializeMessageAsync is null)
-            {
-                summary.AddFailed("custom body parsing failed", ("using type", serializerType.Name), "returns 'null'");
-                return MessageResult.Failure("n/a");
-            }
-
-            MessageResult result = await deserializeMessageAsync;
-            if (result is null)
-            {
-                summary.AddFailed("custom body parsing failed", ("using type", serializerType.Name), "returns 'null'");
-                return MessageResult.Failure("n/a");
-            }
-
-            if (result.IsSuccess)
-            {
-                Type deserializedMessageType = result.DeserializedMessage.GetType();
-                if (deserializedMessageType == MessageType || deserializedMessageType.IsSubclassOf(MessageType))
-                {
-                    summary.AddPassed("custom body parsing passed", ("using type", serializerType.Name));
-                    return result;
-                }
-
-                summary.AddFailed("custom body parsing failed", ("using type", serializerType.Name), ("requires type", MessageType.Name), ("but got type", deserializedMessageType.Name));
-                return MessageResult.Failure("n/a");
-            }
-
-            summary.AddFailed(result.Exception, "custom body parsing failed", result.ErrorMessage);
-            return MessageResult.Failure("n/a");
+            return _customDeserializeMessageBodyAsync(messageBody, messageContext, summary);
         }
 
         /// <summary>
@@ -327,19 +399,19 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
         [Obsolete("Will be removed in v3.0 in favor of centralizing message handler matching in message router")]
         public async Task<MessageResult> TryCustomDeserializeMessageAsync(string message)
         {
-            if (_messageBodySerializer is null)
+            if (_customDeserializeMessageBodyAsync is null)
             {
                 return MessageResult.Failure("No custom deserialization was found on the registered message handler");
             }
 
-            Task<MessageResult> deserializeMessageAsync = _messageBodySerializer.DeserializeMessageAsync(message);
+            Task<MessageBodyResult> deserializeMessageAsync = _customDeserializeMessageBodyAsync(BinaryData.FromString(message), null, new MessageHandlerSummary());
             if (deserializeMessageAsync is null)
             {
                 _logger.LogTrace("Invalid {MessageBodySerializerType} message deserialization was configured on the registered message handler, custom deserialization returned 'null'", nameof(IMessageBodySerializer));
                 return MessageResult.Failure("Invalid custom deserialization was configured on the registered message handler");
             }
 
-            MessageResult result = await deserializeMessageAsync;
+            MessageBodyResult result = await deserializeMessageAsync;
             if (result is null)
             {
                 _logger.LogTrace("No {MessageBodySerializerType} was found on the registered message handler, so no custom deserialization is available", nameof(IMessageBodySerializer));
@@ -351,7 +423,7 @@ namespace Arcus.Messaging.Abstractions.MessageHandling
                 Type deserializedMessageType = result.DeserializedMessage.GetType();
                 if (deserializedMessageType == MessageType || deserializedMessageType.IsSubclassOf(MessageType))
                 {
-                    return result;
+                    return MessageResult.Success(result.DeserializedMessage);
                 }
 
                 _logger.LogTrace("Incoming message '{DeserializedMessageType}' was successfully custom deserialized but can't be processed by message handler because the handler expects message type '{MessageHandlerMessageType}'; fallback to default deserialization", deserializedMessageType.Name, MessageType.Name);

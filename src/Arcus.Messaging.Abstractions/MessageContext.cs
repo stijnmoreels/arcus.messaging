@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 
 namespace Arcus.Messaging.Abstractions
 {
@@ -42,5 +44,27 @@ namespace Arcus.Messaging.Abstractions
         /// Gets the contextual properties provided on the message.
         /// </summary>
         public IDictionary<string, object> Properties { get; }
+
+        /// <summary>
+        /// Gets the configured encoding in the <see cref="Properties"/> with the <see cref="PropertyNames.Encoding"/>,
+        /// or fall back on a default (UTF-8).
+        /// </summary>
+        public Encoding GetEncodingOrDefault()
+        {
+            Encoding fallbackEncoding = Encoding.UTF8;
+
+            if (Properties.TryGetValue(PropertyNames.Encoding, out object encodingNameObj)
+                && encodingNameObj is string encodingName
+                && !string.IsNullOrWhiteSpace(encodingName))
+            {
+                EncodingInfo foundEncoding =
+                    Encoding.GetEncodings()
+                            .FirstOrDefault(e => e.Name.Equals(encodingName, StringComparison.OrdinalIgnoreCase));
+
+                return foundEncoding?.GetEncoding() ?? fallbackEncoding;
+            }
+
+            return fallbackEncoding;
+        }
     }
 }
